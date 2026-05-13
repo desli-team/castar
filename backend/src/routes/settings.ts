@@ -1,13 +1,14 @@
 /**
  * Castar — User Settings Routes
  *
- * GET  /settings — Get current user settings (language, currency, display_name, tier)
+ * GET  /settings — Get current user settings, role, subscription status, and entitlements
  * PUT  /settings — Update settings (upsert: creates user row if missing)
  */
 
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { Env, Variables } from '../types';
+import { buildUserAccess } from '../services/entitlements';
 
 const settings = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -27,7 +28,7 @@ settings.get('/', async (c) => {
   const db = c.env.DB;
 
   const user = await db
-    .prepare('SELECT id, display_name, language, primary_currency, tier, telegram_id, email, phone, created_at, updated_at FROM users WHERE id = ?')
+    .prepare('SELECT id, display_name, language, primary_currency, tier, role, premium_until, subscription_status, telegram_id, email, phone, created_at, updated_at FROM users WHERE id = ?')
     .bind(userId)
     .first();
 
@@ -41,11 +42,26 @@ settings.get('/', async (c) => {
         language: 'en',
         primary_currency: 'UZS',
         tier: 'free',
+        role: 'user',
+        premium_until: null,
+        subscription_status: 'none',
+        entitlements: buildUserAccess(null).entitlements,
       },
     });
   }
 
-  return c.json({ ok: true, data: user });
+  const access = buildUserAccess(user);
+  return c.json({
+    ok: true,
+    data: {
+      ...user,
+      tier: access.tier,
+      role: access.role,
+      premium_until: access.premiumUntil,
+      subscription_status: access.subscriptionStatus,
+      entitlements: access.entitlements,
+    },
+  });
 });
 
 /** PUT /settings — Update user settings (upsert: create user row if missing) */
@@ -71,9 +87,9 @@ settings.put('/', async (c) => {
     // Create user row with defaults + provided fields
     await db
       .prepare(
-        'INSERT INTO users (id, display_name, language, primary_currency, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO users (id, display_name, language, primary_currency, tier, role, premium_until, subscription_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
-      .bind(userId, data.display_name ?? null, data.language ?? 'en', data.primary_currency ?? 'UZS', 'free', now, now)
+      .bind(userId, data.display_name ?? null, data.language ?? 'en', data.primary_currency ?? 'UZS', 'free', 'user', null, 'none', now, now)
       .run();
 
     return c.json({ ok: true, data: { id: userId } }, 201);

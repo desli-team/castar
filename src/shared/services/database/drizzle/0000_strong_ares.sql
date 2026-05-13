@@ -106,6 +106,7 @@ CREATE TABLE `transactions` (
 	`is_recurring` integer DEFAULT false NOT NULL,
 	`recurring_id` text,
 	`voice_input` integer DEFAULT false NOT NULL,
+	`reviewed` integer DEFAULT false NOT NULL,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
 	`synced_at` integer,

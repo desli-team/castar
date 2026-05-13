@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,28 +7,24 @@ import {
   StatusBar,
   Dimensions,
   InteractionManager,
+  ScrollView,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
-import Svg, {
-  Path,
-  Circle as SvgCircle,
-} from 'react-native-svg';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-} from 'react-native-reanimated';
+import Svg, { Path } from 'react-native-svg';
 import { colors, fontFamily, borderRadius } from '../../../shared/constants';
 import { GlowCircle1, GlowCircle2 } from '../../../shared/components/GlowImage';
+import { useSettings } from '../../../shared/services/api/hooks/useSettings';
+import type { ServerSettings } from '../../../shared/services/api/types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const FIGMA_WIDTH = 393;
 const scale = (v: number) => (v / FIGMA_WIDTH) * SCREEN_WIDTH;
 
 // ═══════════════════════════════════════════════
-// Glow positioning constants
+// Glow positioning constants — same as ProfileScreen
 // ═══════════════════════════════════════════════
 
 const GLOW_RENDER_SIZE = 1050;
@@ -47,31 +43,8 @@ const BackArrowIcon = React.memo(() => (
   </Svg>
 ));
 
-// Radio checked — white circle with dark checkmark, 24x24
-const RadioCheckedIcon = React.memo(() => (
-  <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-    <SvgCircle cx={12} cy={12} r={12} fill="white" />
-    <Path
-      d="M7.5 12L10.5 15L16.5 9"
-      stroke="#101010"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-));
-
-// Radio unchecked — outline circle, 24x24
-const RadioUncheckedIcon = React.memo(() => (
-  <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-    <SvgCircle cx={12} cy={12} r={11} stroke="rgba(255,255,255,0.2)" strokeWidth={1.5} />
-  </Svg>
-));
-
-// Shared rounded-rect background path for 36x36 advantage icons
 const ICON_BG = 'M0 8C0 3.58172 3.58172 0 8 0H28C32.4183 0 36 3.58172 36 8V28C36 32.4183 32.4183 36 28 36H8C3.58172 36 0 32.4183 0 28V8Z';
 
-// Advantage icon: Categories — checklist
 const IconCategories = React.memo(() => (
   <Svg width={36} height={36} viewBox="0 0 36 36" fill="none">
     <Path d={ICON_BG} fill="white" fillOpacity={0.1} />
@@ -84,7 +57,6 @@ const IconCategories = React.memo(() => (
   </Svg>
 ));
 
-// Advantage icon: Budgets — receipt
 const IconBudgets = React.memo(() => (
   <Svg width={36} height={36} viewBox="0 0 36 36" fill="none">
     <Path d={ICON_BG} fill="white" fillOpacity={0.1} />
@@ -97,7 +69,6 @@ const IconBudgets = React.memo(() => (
   </Svg>
 ));
 
-// Advantage icon: Analytics — chart line
 const IconAnalytics = React.memo(() => (
   <Svg width={36} height={36} viewBox="0 0 36 36" fill="none">
     <Path d={ICON_BG} fill="white" fillOpacity={0.1} />
@@ -110,47 +81,239 @@ const IconAnalytics = React.memo(() => (
   </Svg>
 ));
 
-// Advantage icon: Priority — star badge
-const IconPriority = React.memo(() => (
+const IconAutomation = React.memo(() => (
   <Svg width={36} height={36} viewBox="0 0 36 36" fill="none">
     <Path d={ICON_BG} fill="white" fillOpacity={0.1} />
     <Path
-      fillRule="evenodd"
-      clipRule="evenodd"
-      d="M19.1964 12.8193C18.4504 12.4125 17.5488 12.4125 16.8028 12.8193L12.8076 14.9977C12.0042 15.4358 11.5044 16.2777 11.5044 17.1926V21.3073C11.5044 22.2223 12.0042 23.0642 12.8076 23.5022L16.8028 25.6807C17.5488 26.0875 18.4504 26.0875 19.1964 25.6807L23.1916 23.5022C23.9949 23.0642 24.4948 22.2223 24.4948 21.3073V17.1926C24.4948 16.2777 23.9949 15.4358 23.1916 14.9977L19.1964 12.8193ZM17.9998 16.75C17.763 16.75 17.6047 17.034 17.288 17.6021L17.2061 17.7491C17.1161 17.9105 17.0711 17.9912 17.001 18.0445C16.9308 18.0977 16.8435 18.1175 16.6687 18.157L16.5096 18.193C15.8947 18.3321 15.5873 18.4017 15.5141 18.6369C15.441 18.8722 15.6506 19.1173 16.0698 19.6075L16.1782 19.7343C16.2974 19.8736 16.3569 19.9433 16.3837 20.0294C16.4105 20.1156 16.4015 20.2085 16.3835 20.3944L16.3671 20.5636C16.3037 21.2177 16.272 21.5447 16.4635 21.6901C16.655 21.8354 16.9429 21.7029 17.5187 21.4378L17.6676 21.3692C17.8312 21.2939 17.913 21.2562 17.9998 21.2562C18.0865 21.2562 18.1683 21.2939 18.3319 21.3692L18.4808 21.4378C19.0566 21.7029 19.3445 21.8354 19.536 21.6901C19.7275 21.5447 19.6958 21.2176 19.6324 20.5636L19.616 20.3944C19.598 20.2085 19.589 20.1156 19.6158 20.0294C19.6426 19.9433 19.7021 19.8736 19.8213 19.7343L19.9297 19.6075C20.3489 19.1173 20.5585 18.8722 20.4854 18.6369C20.4123 18.4017 20.1048 18.3321 19.4899 18.193L19.3308 18.157C19.156 18.1175 19.0687 18.0977 18.9985 18.0445C18.9284 17.9912 18.8834 17.9105 18.7934 17.7491L18.7115 17.6021C18.3948 17.034 18.2365 16.75 17.9998 16.75Z"
-      fill="white"
+      d="M18 10.5C13.8579 10.5 10.5 13.8579 10.5 18C10.5 22.1421 13.8579 25.5 18 25.5C21.4697 25.5 24.3896 23.1436 25.2461 19.9444"
+      stroke="white"
+      strokeWidth={1.7}
+      strokeLinecap="round"
     />
     <Path
-      d="M17.1668 9.66663H18.8335C20.4048 9.66663 21.1905 9.66663 21.6787 10.1548C22.1668 10.6429 22.1668 11.4286 22.1668 13V13.0149L19.7952 11.7218C18.6762 11.1116 17.3238 11.1116 16.2048 11.7218L13.8335 13.0147V13C13.8335 11.4286 13.8335 10.6429 14.3217 10.1548C14.8098 9.66663 15.5955 9.66663 17.1668 9.66663Z"
-      fill="white"
+      d="M25.5 12.5V17H21"
+      stroke="white"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Path
+      d="M17.9998 14.6666V18.2916L20.4165 19.5"
+      stroke="white"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
     />
   </Svg>
 ));
 
-// ═══════════════════════════════════════════════
-// Advantage data
-// ═══════════════════════════════════════════════
+const IconSync = React.memo(() => (
+  <Svg width={36} height={36} viewBox="0 0 36 36" fill="none">
+    <Path d={ICON_BG} fill="white" fillOpacity={0.1} />
+    <Path
+      d="M13 15.5C13.9361 13.7209 15.8034 12.5 17.9583 12.5C20.0802 12.5 21.9232 13.6837 22.873 15.4183"
+      stroke="white"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+    />
+    <Path
+      d="M21.25 15.5H23.25V13.5"
+      stroke="white"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Path
+      d="M23 20.5C22.0639 22.2791 20.1966 23.5 18.0417 23.5C15.9198 23.5 14.0768 22.3163 13.127 20.5817"
+      stroke="white"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+    />
+    <Path
+      d="M14.75 20.5H12.75V22.5"
+      stroke="white"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+));
 
-const ADVANTAGES: { Icon: React.FC; labelKey: string }[] = [
-  { Icon: IconCategories, labelKey: 'subscription.advantageCategories' },
-  { Icon: IconBudgets, labelKey: 'subscription.advantageBudgets' },
-  { Icon: IconAnalytics, labelKey: 'subscription.advantageAnalytics' },
-  { Icon: IconPriority, labelKey: 'subscription.advantagePriority' },
+type SubscriptionDisplayState = 'free' | 'premium_active' | 'trialing' | 'past_due' | 'expired';
+type Accent = 'neutral' | 'premium' | 'warning';
+
+type SubscriptionViewModel = {
+  state: SubscriptionDisplayState;
+  accent: Accent;
+  chipKey: string;
+  chipDefault: string;
+  heroTitleKey: string;
+  heroTitleDefault: string;
+  heroSubtitleKey: string;
+  heroSubtitleDefault: string;
+  benefitsTitleKey: string;
+  benefitsTitleDefault: string;
+  primaryButtonKey: string;
+  primaryButtonDefault: string;
+  readinessKey: string;
+  readinessDefault: string;
+};
+
+const BENEFITS: { Icon: React.FC; titleKey: string; titleDefault: string; detailKey: string; detailDefault: string }[] = [
+  {
+    Icon: IconCategories,
+    titleKey: 'subscription.benefitCategoriesTitle',
+    titleDefault: 'Custom categories',
+    detailKey: 'subscription.benefitCategoriesDetail',
+    detailDefault: 'Create your own category system.',
+  },
+  {
+    Icon: IconAnalytics,
+    titleKey: 'subscription.benefitAnalyticsTitle',
+    titleDefault: 'Analytics Pro',
+    detailKey: 'subscription.benefitAnalyticsDetail',
+    detailDefault: 'See deeper cashflow and spending insights.',
+  },
+  {
+    Icon: IconBudgets,
+    titleKey: 'subscription.benefitBudgetsTitle',
+    titleDefault: 'Budget alerts',
+    detailKey: 'subscription.benefitBudgetsDetail',
+    detailDefault: 'Get notified before budgets become risky.',
+  },
+  {
+    Icon: IconAutomation,
+    titleKey: 'subscription.benefitAutomationTitle',
+    titleDefault: 'Recurring automation',
+    detailKey: 'subscription.benefitAutomationDetail',
+    detailDefault: 'Automate repeat payments and income.',
+  },
+  {
+    Icon: IconSync,
+    titleKey: 'subscription.benefitSyncTitle',
+    titleDefault: 'Multi-device sync',
+    detailKey: 'subscription.benefitSyncDetail',
+    detailDefault: 'Use Castar across your devices.',
+  },
 ];
+
+const isFutureTimestamp = (value: number | null | undefined) => (
+  typeof value === 'number' && Number.isFinite(value) && value > Date.now()
+);
+
+const formatSubscriptionDate = (value: number | null | undefined) => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= Date.now()) return null;
+  return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(new Date(value));
+};
+
+const buildSubscriptionViewModel = (settings?: ServerSettings | null): SubscriptionViewModel => {
+  const tier = settings?.tier === 'premium' ? 'premium' : 'free';
+  const status = settings?.subscriptionStatus ?? 'none';
+  const hasActiveDate = isFutureTimestamp(settings?.premiumUntil);
+
+  if (status === 'past_due') {
+    return {
+      state: 'past_due',
+      accent: 'warning',
+      chipKey: 'subscription.chipPaymentIssue',
+      chipDefault: 'Payment issue',
+      heroTitleKey: 'subscription.pastDueTitle',
+      heroTitleDefault: 'Premium needs attention',
+      heroSubtitleKey: 'subscription.pastDueSubtitle',
+      heroSubtitleDefault: 'Update payment to keep Premium features active.',
+      benefitsTitleKey: 'subscription.pastDueBenefitsTitle',
+      benefitsTitleDefault: 'Premium features',
+      primaryButtonKey: 'subscription.updatePayment',
+      primaryButtonDefault: 'Update payment',
+      readinessKey: 'subscription.paymentUpdatesSoon',
+      readinessDefault: 'Payment updates are coming soon',
+    };
+  }
+
+  if (status === 'trialing' && tier === 'premium') {
+    return {
+      state: 'trialing',
+      accent: 'premium',
+      chipKey: 'subscription.chipTrial',
+      chipDefault: 'Trial',
+      heroTitleKey: 'subscription.trialTitle',
+      heroTitleDefault: 'Premium trial is active',
+      heroSubtitleKey: hasActiveDate ? 'subscription.trialEnds' : 'subscription.trialSubtitle',
+      heroSubtitleDefault: hasActiveDate ? 'Trial ends {{date}}' : 'Explore Premium features during your trial',
+      benefitsTitleKey: 'subscription.trialBenefitsTitle',
+      benefitsTitleDefault: 'Included during your trial',
+      primaryButtonKey: 'subscription.manageTrial',
+      primaryButtonDefault: 'Manage trial',
+      readinessKey: 'subscription.subscriptionManagementSoon',
+      readinessDefault: 'Subscription management is coming soon',
+    };
+  }
+
+  if (tier === 'premium' && status !== 'canceled' && (settings?.premiumUntil == null || hasActiveDate)) {
+    return {
+      state: 'premium_active',
+      accent: 'premium',
+      chipKey: 'subscription.chipPremium',
+      chipDefault: 'Premium',
+      heroTitleKey: 'subscription.premiumActiveTitle',
+      heroTitleDefault: 'Premium is active',
+      heroSubtitleKey: hasActiveDate ? 'subscription.activeUntil' : 'subscription.premiumActiveSubtitle',
+      heroSubtitleDefault: hasActiveDate ? 'Active until {{date}}' : 'Your Premium access is active',
+      benefitsTitleKey: 'subscription.premiumBenefitsTitle',
+      benefitsTitleDefault: 'Included with your Premium',
+      primaryButtonKey: 'subscription.manageSubscription',
+      primaryButtonDefault: 'Manage subscription',
+      readinessKey: 'subscription.subscriptionManagementSoon',
+      readinessDefault: 'Subscription management is coming soon',
+    };
+  }
+
+  if (status === 'canceled' || (settings?.premiumUntil != null && !hasActiveDate && status !== 'none')) {
+    return {
+      state: 'expired',
+      accent: 'neutral',
+      chipKey: 'subscription.chipFree',
+      chipDefault: 'Free',
+      heroTitleKey: 'subscription.expiredTitle',
+      heroTitleDefault: 'Premium is inactive',
+      heroSubtitleKey: 'subscription.expiredSubtitle',
+      heroSubtitleDefault: 'Reactivate Premium to use advanced Castar tools.',
+      benefitsTitleKey: 'subscription.premiumIncludes',
+      benefitsTitleDefault: 'Premium includes',
+      primaryButtonKey: 'subscription.reactivatePremium',
+      primaryButtonDefault: 'Reactivate Premium',
+      readinessKey: 'subscription.paymentsSoon',
+      readinessDefault: 'Payments are coming soon',
+    };
+  }
+
+  return {
+    state: 'free',
+    accent: 'neutral',
+    chipKey: 'subscription.chipFree',
+    chipDefault: 'Free',
+    heroTitleKey: 'subscription.upgradeTitle',
+    heroTitleDefault: 'Upgrade to Premium',
+    heroSubtitleKey: 'subscription.upgradeSubtitle',
+    heroSubtitleDefault: 'Get advanced tools for deeper control over your money.',
+    benefitsTitleKey: 'subscription.premiumIncludes',
+    benefitsTitleDefault: 'Premium includes',
+    primaryButtonKey: 'subscription.upgradeToPremium',
+    primaryButtonDefault: 'Upgrade to Premium',
+    readinessKey: 'subscription.paymentsSoon',
+    readinessDefault: 'Payments are coming soon',
+  };
+};
 
 // ═══════════════════════════════════════════════
 // Component
 // ═══════════════════════════════════════════════
 
-type PlanType = 'annual' | 'monthly';
-
 export const SubscriptionManagementScreen = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { t } = useTranslation();
-  const [selectedPlan, setSelectedPlan] = useState<PlanType>('annual');
-
-  // Defer heavy glow rendering until after navigation transition completes
+  const { data: settings } = useSettings();
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
@@ -160,29 +323,25 @@ export const SubscriptionManagementScreen = () => {
     return () => handle.cancel();
   }, []);
 
-  // Simple opacity animation
-  const annualOpacity = useSharedValue(1);
-  const monthlyOpacity = useSharedValue(0.6);
+  const viewModel = useMemo(() => buildSubscriptionViewModel(settings), [settings]);
+  const date = formatSubscriptionDate(settings?.premiumUntil);
+  const heroSubtitle = t(viewModel.heroSubtitleKey, {
+    defaultValue: viewModel.heroSubtitleDefault,
+    date,
+  });
+  const readinessNote = t(viewModel.readinessKey, { defaultValue: viewModel.readinessDefault });
 
-  useEffect(() => {
-    const isAnnual = selectedPlan === 'annual';
-    annualOpacity.value = withTiming(isAnnual ? 1 : 0.6, { duration: 200 });
-    monthlyOpacity.value = withTiming(isAnnual ? 0.6 : 1, { duration: 200 });
-  }, [selectedPlan]);
-
-  const annualCardStyle = useAnimatedStyle(() => ({
-    opacity: annualOpacity.value,
-  }));
-
-  const monthlyCardStyle = useAnimatedStyle(() => ({
-    opacity: monthlyOpacity.value,
-  }));
+  const handlePrimaryPress = () => {
+    Alert.alert(
+      t('subscription.notReadyTitle', { defaultValue: 'Not ready yet' }),
+      readinessNote,
+    );
+  };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} translucent />
 
-      {/* Background glows — deferred until after transition animation */}
       {isReady && (
         <>
           <View style={styles.glowContainer} pointerEvents="none">
@@ -194,7 +353,6 @@ export const SubscriptionManagementScreen = () => {
         </>
       )}
 
-      {/* Fixed header */}
       <View style={[styles.headerRow, { paddingTop: insets.top + 16, paddingHorizontal: 24 }]}>
         <TouchableOpacity
           style={styles.backButton}
@@ -204,101 +362,63 @@ export const SubscriptionManagementScreen = () => {
         >
           <BackArrowIcon />
         </TouchableOpacity>
-        <Text style={styles.title}>{t('subscription.title')}</Text>
+        <Text style={styles.title}>{t('subscription.screenTitle', { defaultValue: 'Subscription' })}</Text>
       </View>
 
-      {/* Content */}
-      <View style={styles.content}>
-        {/* Plan cards — side by side */}
-        <View style={styles.plansRow}>
-          {/* Annual plan */}
-          <TouchableOpacity
-            style={[styles.planCard]}
-            activeOpacity={0.7}
-            onPress={() => setSelectedPlan('annual')}
-          >
-            <Animated.View style={[{ flex: 1, justifyContent: 'space-between' }, annualCardStyle]}>
-              {/* Top section */}
-              <View>
-                {/* Row 1: radio (left) + save badge (right) */}
-                <View style={styles.planTopRow}>
-                  {selectedPlan === 'annual' ? <RadioCheckedIcon /> : <RadioUncheckedIcon />}
-                  <View style={styles.saveBadge}>
-                    <Text style={styles.saveBadgeText}>{t('subscription.save71')}</Text>
-                  </View>
-                </View>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.heroCard, styles[`${viewModel.accent}Hero`]]}>
+          <View style={styles.heroTopRow}>
+            <View style={[styles.statusChip, styles[`${viewModel.accent}Chip`]]}>
+              <Text style={[styles.statusChipText, styles[`${viewModel.accent}ChipText`]]}>
+                {t(viewModel.chipKey, { defaultValue: viewModel.chipDefault })}
+              </Text>
+            </View>
+          </View>
 
-                {/* Plan name */}
-                <Text style={styles.planName}>{t('subscription.annual')}</Text>
+          <Text style={styles.heroTitle}>
+            {t(viewModel.heroTitleKey, { defaultValue: viewModel.heroTitleDefault })}
+          </Text>
+          <Text style={styles.heroSubtitle}>{heroSubtitle}</Text>
 
-                {/* Trial text */}
-                <Text style={styles.trialText}>{t('subscription.freeTrial14')}</Text>
-              </View>
+          {viewModel.state === 'premium_active' && date && (
+            <View style={styles.validityPill}>
+              <Text style={styles.validityPillText}>
+                {t('subscription.benefitsRemainUntil', {
+                  defaultValue: 'Benefits available until {{date}}',
+                  date,
+                })}
+              </Text>
+            </View>
+          )}
 
-              {/* Bottom section — prices pushed to bottom */}
-              <View style={styles.planBottom}>
-                <Text style={styles.priceMain}>{t('subscription.annualPrice')}</Text>
-                <Text style={styles.priceSecondary}>{t('subscription.annualTotal')}</Text>
-              </View>
-            </Animated.View>
+          <TouchableOpacity style={styles.primaryButton} activeOpacity={0.82} onPress={handlePrimaryPress}>
+            <Text style={styles.primaryButtonText}>
+              {t(viewModel.primaryButtonKey, { defaultValue: viewModel.primaryButtonDefault })}
+            </Text>
           </TouchableOpacity>
-
-          {/* Monthly plan */}
-          <TouchableOpacity
-            style={[styles.planCard]}
-            activeOpacity={0.7}
-            onPress={() => setSelectedPlan('monthly')}
-          >
-            <Animated.View style={[{ flex: 1, justifyContent: 'space-between' }, monthlyCardStyle]}>
-              {/* Top section */}
-              <View>
-                {/* Row 1: radio */}
-                <View style={styles.planTopRow}>
-                  {selectedPlan === 'monthly' ? <RadioCheckedIcon /> : <RadioUncheckedIcon />}
-                </View>
-
-                {/* Plan name */}
-                <Text style={styles.planName}>{t('subscription.monthly')}</Text>
-
-                {/* Trial text */}
-                <Text style={styles.trialText}>{t('subscription.freeTrial7')}</Text>
-              </View>
-
-              {/* Bottom section — price pushed to bottom */}
-              <View style={styles.planBottom}>
-                <Text style={styles.priceMain}>{t('subscription.monthlyPrice')}</Text>
-              </View>
-            </Animated.View>
-          </TouchableOpacity>
+          <Text style={styles.readinessNote}>{readinessNote}</Text>
         </View>
 
-        {/* Advantages section */}
-        <Text style={styles.advantagesTitle}>{t('subscription.advantages')}</Text>
-        <View style={styles.advantagesList}>
-          {ADVANTAGES.map((adv, index) => {
-            const text = t(adv.labelKey);
-            const parts = text.split('|');
-            return (
-              <View key={index} style={styles.advantageRow}>
-                <adv.Icon />
-                <Text style={styles.advantageText}>
-                  {parts[0]}
-                  {parts[1] && (
-                    <Text style={styles.advantageTextGrey}>{parts[1]}</Text>
-                  )}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      </View>
+        <Text style={styles.sectionTitle}>
+          {t(viewModel.benefitsTitleKey, { defaultValue: viewModel.benefitsTitleDefault })}
+        </Text>
 
-      {/* Bottom CTA */}
-      <View style={[styles.ctaContainer, { paddingBottom: insets.bottom + 16 }]}>
-        <TouchableOpacity style={styles.ctaButton} activeOpacity={0.8}>
-          <Text style={styles.ctaText}>{t('subscription.tryFree')}</Text>
-        </TouchableOpacity>
-      </View>
+        <View style={styles.benefitsList}>
+          {BENEFITS.map(({ Icon, titleKey, titleDefault, detailKey, detailDefault }) => (
+            <View key={titleKey} style={styles.benefitRow}>
+              <Icon />
+              <View style={styles.benefitCopy}>
+                <Text style={styles.benefitTitle}>{t(titleKey, { defaultValue: titleDefault })}</Text>
+                <Text style={styles.benefitDetail}>{t(detailKey, { defaultValue: detailDefault })}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
     </View>
   );
 };
@@ -312,8 +432,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-
-  // === Glows (same positions as ProfileScreen) ===
   glowContainer: {
     position: 'absolute',
     left: scale(22 + 175 - GLOW_RENDER_SIZE / 2),
@@ -324,22 +442,12 @@ const styles = StyleSheet.create({
     left: scale(267.5 - GLOW2_RENDER_SIZE / 2),
     top: scale(-64.5 - GLOW2_RENDER_SIZE / 2),
   },
-
-  // Content area
-  content: {
-    flex: 1,
-    paddingHorizontal: 24,
-  },
-
-  // Header row — back button + title on same line
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
     marginBottom: 32,
   },
-
-  // Back button — 48x48, rgba(255,255,255,0.1), borderRadius 12 (same as auth screens)
   backButton: {
     width: 48,
     height: 48,
@@ -348,8 +456,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
-  // Title — 20px medium, on same level as back button
   title: {
     fontFamily: fontFamily.medium,
     fontSize: 20,
@@ -357,122 +463,146 @@ const styles = StyleSheet.create({
     color: colors.white[100],
     flex: 1,
   },
-
-  // Plan cards row
-  plansRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 32,
-  },
-
-  // Plan card — height 220, flex: 1, content spread top-to-bottom
-  planCard: {
+  scroll: {
     flex: 1,
-    height: 220,
+  },
+  content: {
+    paddingHorizontal: 24,
+  },
+  heroCard: {
+    minHeight: 276,
     backgroundColor: 'rgba(255,255,255,0.05)',
     borderRadius: borderRadius.xl,
-    padding: 12,
-    justifyContent: 'space-between',
+    padding: 18,
+    borderWidth: 1,
+    marginBottom: 32,
   },
-  planCardSelected: {},
-
-  // Plan card top row: radio (left) + badge (right)
-  planTopRow: {
+  neutralHero: {
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  premiumHero: {
+    borderColor: 'rgba(23, 229, 108, 0.22)',
+    backgroundColor: 'rgba(255,255,255,0.055)',
+  },
+  warningHero: {
+    borderColor: 'rgba(250, 173, 20, 0.28)',
+  },
+  heroTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 34,
   },
-  planName: {
-    fontFamily: fontFamily.regular,
-    fontSize: 20,
-    lineHeight: 26,
-    color: colors.white[100],
-    marginBottom: 4,
-  },
-
-  // Save badge — pill, next to radio on top row
-  saveBadge: {
-    backgroundColor: 'rgba(23, 229, 108, 0.15)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+  statusChip: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: borderRadius.full,
   },
-  saveBadgeText: {
+  neutralChip: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  premiumChip: {
+    backgroundColor: 'rgba(23, 229, 108, 0.15)',
+  },
+  warningChip: {
+    backgroundColor: 'rgba(250, 173, 20, 0.14)',
+  },
+  statusChipText: {
     fontFamily: fontFamily.medium,
     fontSize: 12,
     lineHeight: 16,
+  },
+  neutralChipText: {
+    color: colors.white[70],
+  },
+  premiumChipText: {
     color: colors.success[700],
   },
-
-  // Trial text
-  trialText: {
-    fontFamily: fontFamily.regular,
-    fontSize: 14,
-    lineHeight: 18,
-    color: colors.white[40],
+  warningChipText: {
+    color: colors.warning[500],
   },
-
-  // Bottom section of card — prices pushed to bottom
-  planBottom: {},
-  priceMain: {
+  heroTitle: {
     fontFamily: fontFamily.medium,
-    fontSize: 20,
-    lineHeight: 26,
+    fontSize: 30,
+    lineHeight: 36,
     color: colors.white[100],
+    letterSpacing: -0.4,
+    marginBottom: 10,
   },
-  priceSecondary: {
+  heroSubtitle: {
     fontFamily: fontFamily.regular,
-    fontSize: 14,
-    lineHeight: 18,
-    color: '#706E75',
-    marginTop: 2,
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.white[50],
+    marginBottom: 18,
   },
-
-  // Advantages section title — same as ProfileScreen sectionHeader
-  advantagesTitle: {
+  validityPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(23, 229, 108, 0.1)',
+    borderRadius: borderRadius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    marginBottom: 18,
+  },
+  validityPillText: {
     fontFamily: fontFamily.regular,
-    fontSize: 14,
-    lineHeight: 18,
-    color: colors.white[40],
-    marginBottom: 12,
+    fontSize: 13,
+    lineHeight: 17,
+    color: colors.success[700],
   },
-  advantagesList: {
-    gap: 16,
-  },
-  advantageRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  advantageText: {
-    fontFamily: fontFamily.regular,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.white[100],
-    flex: 1,
-  },
-  advantageTextGrey: {
-    color: colors.white[40],
-  },
-
-  // Bottom CTA
-  ctaContainer: {
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    backgroundColor: colors.background,
-  },
-  ctaButton: {
+  primaryButton: {
+    height: 56,
     backgroundColor: colors.white[100],
     borderRadius: borderRadius.full,
-    height: 56,
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 'auto',
   },
-  ctaText: {
+  primaryButtonText: {
     fontFamily: fontFamily.regular,
     fontSize: 16,
     lineHeight: 22,
     color: colors.background,
+  },
+  readinessNote: {
+    fontFamily: fontFamily.regular,
+    fontSize: 13,
+    lineHeight: 17,
+    color: colors.white[40],
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  sectionTitle: {
+    fontFamily: fontFamily.regular,
+    fontSize: 14,
+    lineHeight: 18,
+    color: colors.white[40],
+    marginBottom: 12,
+  },
+  benefitsList: {
+    gap: 16,
+  },
+  benefitRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  benefitCopy: {
+    flex: 1,
+    paddingTop: 1,
+  },
+  benefitTitle: {
+    fontFamily: fontFamily.regular,
+    fontSize: 15,
+    lineHeight: 20,
+    color: colors.white[100],
+    marginBottom: 2,
+  },
+  benefitDetail: {
+    fontFamily: fontFamily.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.white[40],
   },
 });

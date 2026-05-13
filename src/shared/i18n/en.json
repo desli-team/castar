@@ -90,7 +90,7 @@
   "tabs": {
     "home": "Home",
     "monitoring": "Monitoring",
-    "tasks": "Tasks",
+    "tasks": "Inbox",
     "profile": "Profile"
   },
   "home": {
@@ -103,7 +103,7 @@
     "streak": "days in a row",
     "tasksThisMonth": "tasks this month",
     "streakLabel": "Streak",
-    "tasksLabel": "Tasks",
+    "tasksLabel": "INBOX",
     "done": "Done",
     "archive": "Archive",
     "inProgress": "In progress",
@@ -385,7 +385,7 @@
     "annualTotal": "89.98/yr",
     "monthlyPrice": "9.98$/mo",
     "advantages": "Advantages:",
-    "advantageCategories": "Create more categories for expenses and income |(up to 20 versus 5 in the free version).",
+    "advantageCategories": "Create unlimited custom categories for expenses and income |(free version keeps starter categories plus Other).",
     "advantageBudgets": "Budgets and reminders: control your spending and get notified when you reach your limit.",
     "advantageAnalytics": "Get advanced statistics: detailed graphs, analytics by categories, spending dynamics.",
     "advantagePriority": "Priority access to new features and exclusive updates.",

@@ -22,7 +22,7 @@ import type {
 // ── Filter params (camelCase → snake_case query params) ──
 
 export interface TransactionListParams {
-  type?: 'income' | 'expense' | 'transfer';
+  type?: 'income' | 'expense';
   categoryId?: string;
   accountId?: string;
   dateFrom?: number;

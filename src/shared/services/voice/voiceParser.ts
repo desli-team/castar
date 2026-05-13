@@ -48,6 +48,32 @@ const incomeKeywords = [
 ];
 
 export function parseVoiceInput(text: string): VoiceParseResult {
+  return parseSingleTransaction(text);
+}
+
+export function parseVoiceInputs(text: string): VoiceParseResult[] {
+  const parts = splitPotentialTransactions(text);
+  const parsed = parts.map((part) => parseSingleTransaction(part));
+
+  if (parsed.length <= 1) {
+    return parsed;
+  }
+
+  const sharedType = parsed.find((item) => item.type)?.type;
+  const sharedCurrency = parsed.find((item) => item.currency)?.currency;
+
+  return parsed.map((item) => ({
+    ...item,
+    type: item.type ?? sharedType ?? 'expense',
+    currency: item.currency ?? sharedCurrency,
+    confidence:
+      item.confidence +
+      (item.type === undefined && sharedType ? 0.15 : 0) +
+      (item.currency === undefined && sharedCurrency ? 0.05 : 0),
+  }));
+}
+
+function parseSingleTransaction(text: string): VoiceParseResult {
   const lowerText = text.toLowerCase().trim();
   let amount: number | undefined;
   let currency: Currency | undefined;
@@ -83,10 +109,14 @@ export function parseVoiceInput(text: string): VoiceParseResult {
     type = 'income';
   }
 
-  // Extract category hint — text after "на", "on", "ga"
+  // Extract category hint — text after "на", "on", "uchun", "ga"
   const categoryMatch = lowerText.match(/(?:на|on|uchun|ga)\s+(.+?)(?:\s*$)/);
   if (categoryMatch) {
     categoryHint = categoryMatch[1].trim();
+  }
+
+  if (!categoryHint && amount !== undefined) {
+    categoryHint = inferDescriptionWithoutAmount(lowerText, numberMatch?.[1]);
   }
 
   const confidence =
@@ -100,8 +130,39 @@ export function parseVoiceInput(text: string): VoiceParseResult {
     currency,
     categoryHint,
     type,
-    description: text,
+    description: categoryHint ?? text,
     confidence,
     rawText: text,
   };
+}
+
+function splitPotentialTransactions(text: string): string[] {
+  const normalized = text.trim();
+
+  if (!normalized) {
+    return [text];
+  }
+
+  const parts = normalized
+    .split(/[,;\n]+|\s+и\s+|\s+and\s+|\s+va\s+/i)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const meaningfulParts = parts.filter((part) => /\d|ming|тысяч|dollar|sum|сум|so'm/i.test(part));
+
+  return meaningfulParts.length > 1 ? meaningfulParts : [text];
+}
+
+function inferDescriptionWithoutAmount(text: string, rawAmount?: string): string | undefined {
+  if (!rawAmount) {
+    return undefined;
+  }
+
+  const cleaned = text
+    .replace(rawAmount, '')
+    .replace(/\b(spent|paid|bought|потратил|потратила|купил|купила|sarfladim|sotib oldim)\b/gi, '')
+    .replace(/\b(dollar|dollars|доллар|долларов|euro|евро|рубль|рублей|rubl|so'm|sum|сум|сумов|ming|тысяч)\b/gi, '')
+    .trim();
+
+  return cleaned || undefined;
 }

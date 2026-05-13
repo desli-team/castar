@@ -90,7 +90,7 @@
   "tabs": {
     "home": "Bosh sahifa",
     "monitoring": "Monitoring",
-    "tasks": "Vazifalar",
+    "tasks": "Inbox",
     "profile": "Profil"
   },
   "home": {
@@ -103,7 +103,7 @@
     "streak": "kun ketma-ket",
     "tasksThisMonth": "oy vazifalari",
     "streakLabel": "Strik",
-    "tasksLabel": "Vazifalar",
+    "tasksLabel": "INBOX",
     "done": "Bajarildi",
     "archive": "Arxiv",
     "inProgress": "Jarayonda",

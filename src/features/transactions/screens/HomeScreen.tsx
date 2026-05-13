@@ -49,7 +49,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
-import { useNavigation } from '@react-navigation/native';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useShallow } from 'zustand/react/shallow';
 import Svg, { Path, Defs, RadialGradient, Stop, Circle } from 'react-native-svg';
@@ -64,12 +64,18 @@ import type { HomeStackParamList } from '../../../shared/types';
 import { useAuthStore } from '../../auth/store/authStore';
 import { useProfileStore } from '../../profile/store/profileStore';
 import { useBudgetStore } from '../../budget/store/budgetStore';
+import { useCategoryStore } from '../../categories/store/categoryStore';
+import { useRecurringStore } from '../../recurring/store/recurringStore';
 import { useTransactionStore } from '../store/transactionStore';
 import { formatCurrency, formatAmount, getCurrencySymbol } from '../../../shared/utils/formatCurrency';
 import * as budgetQueries from '../../../shared/services/database/budgetQueries';
+import * as debtQueries from '../../../shared/services/database/debtQueries';
+import * as auditLogQueries from '../../../shared/services/database/auditLogQueries';
+import { syncService } from '../../../shared/services/sync/syncService';
 import { convertCurrency } from '../../../shared/services/currency/currencyService';
 import * as Haptics from 'expo-haptics';
 import { useTabBarVisibility } from '../../../core/navigation/tabBarVisibility';
+import { buildInboxItems, summarizeInbox } from '../../tasks/utils/inboxEngine';
 
 // Pure JS UUID v4 fallback (crypto.getRandomValues may be unavailable in old dev builds)
 const generateUUID = (): string => {
@@ -303,6 +309,8 @@ export const HomeScreen = () => {
   const addBudget = useBudgetStore((s) => s.addBudget);
   const updateBudgetInStore = useBudgetStore((s) => s.updateBudget);
   const transactions = useTransactionStore(useShallow((s) => s.transactions));
+  const categories = useCategoryStore(useShallow((s) => s.categories));
+  const recurrings = useRecurringStore(useShallow((s) => s.recurrings));
 
   // ── Derived data ──
   const now = new Date();
@@ -328,6 +336,98 @@ export const HomeScreen = () => {
   const budgetAmount = activeBudget?.amount ?? 0;
   const remaining = budgetAmount - spent;
 
+  const monthStart = useMemo(() => {
+    const date = new Date();
+    date.setDate(1);
+    date.setHours(0, 0, 0, 0);
+    return date.getTime();
+  }, []);
+
+  const monthlySnapshot = useMemo(() => {
+    const monthTransactions = transactions.filter((tx) => tx.date >= monthStart);
+    const income = monthTransactions
+      .filter((tx) => tx.type === 'income')
+      .reduce((sum, tx) => sum + tx.amount, 0);
+    const expense = monthTransactions
+      .filter((tx) => tx.type === 'expense')
+      .reduce((sum, tx) => sum + tx.amount, 0);
+
+    const byCategory = monthTransactions
+      .filter((tx) => tx.type === 'expense')
+      .reduce<Record<string, number>>((acc, tx) => {
+        acc[tx.categoryId] = (acc[tx.categoryId] ?? 0) + tx.amount;
+        return acc;
+      }, {});
+
+    const topCategoryEntry = Object.entries(byCategory).sort((a, b) => b[1] - a[1])[0];
+    const topCategory = topCategoryEntry
+      ? categories.find((category) => category.id === topCategoryEntry[0])
+      : undefined;
+
+    return {
+      income,
+      expense,
+      net: income - expense,
+      topCategoryName: topCategory
+        ? (topCategory.name.startsWith('categories.') ? t(topCategory.name) : topCategory.name)
+        : '—',
+      topCategoryAmount: topCategoryEntry?.[1] ?? 0,
+    };
+  }, [categories, monthStart, t, transactions]);
+
+  const recentTransactions = useMemo(
+    () => [...transactions].sort((a, b) => b.date - a.date).slice(0, 3),
+    [transactions],
+  );
+
+  const periodExpenseTransactions = useMemo(() => {
+    const days = PERIOD_DAYS[selectedPeriod];
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return transactions.filter((tx) => tx.type === 'expense' && tx.date >= cutoff);
+  }, [selectedPeriod, transactions]);
+
+  const categorySegments = useMemo(() => {
+    const totals = periodExpenseTransactions.reduce<Record<string, number>>((acc, tx) => {
+      acc[tx.categoryId] = (acc[tx.categoryId] ?? 0) + tx.amount;
+      return acc;
+    }, {});
+
+    return Object.entries(totals)
+      .map(([categoryId, amount]) => {
+        const category = categories.find((item) => item.id === categoryId);
+        return {
+          categoryId,
+          amount,
+          name: category
+            ? (category.name.startsWith('categories.') ? t(category.name) : category.name)
+            : 'Other',
+          color: category?.color || '#A3E635',
+          icon: category?.icon || '•',
+        };
+      })
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5);
+  }, [categories, periodExpenseTransactions, t]);
+
+  const budgetSpentPercent = budgetAmount > 0 ? Math.min(100, Math.round((spent / budgetAmount) * 100)) : 0;
+
+  const formatTransactionTime = useCallback((timestamp: number) => {
+    const txDate = new Date(timestamp);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    const isSameDay = (a: Date, b: Date) => (
+      a.getFullYear() === b.getFullYear()
+      && a.getMonth() === b.getMonth()
+      && a.getDate() === b.getDate()
+    );
+
+    if (isSameDay(txDate, today)) return format(txDate, 'HH:mm');
+    if (isSameDay(txDate, yesterday)) return 'Yesterday';
+    return format(txDate, 'd MMM', { locale });
+  }, [locale]);
+
   // ── Auto-convert budget when profile currency changes ──
   const prevCurrencyRef = useRef(currency);
   useEffect(() => {
@@ -341,8 +441,21 @@ export const HomeScreen = () => {
         const converted = await convertCurrency(activeBudget.amount, activeBudget.currency, currency);
         const rounded = Math.round(converted);
         const ts = Date.now();
-        budgetQueries.update(activeBudget.id, { amount: rounded, currency, updatedAt: ts });
-        updateBudgetInStore(activeBudget.id, { amount: rounded, currency, updatedAt: ts });
+        const patch = { amount: rounded, currency, updatedAt: ts };
+        const updatedBudget = { ...activeBudget, ...patch };
+        budgetQueries.update(activeBudget.id, patch);
+        updateBudgetInStore(activeBudget.id, patch);
+        syncService.queueChange('budgets', activeBudget.id, 'update', updatedBudget).catch(() => {});
+        const auditLog = auditLogQueries.record({
+          userId: activeBudget.userId,
+          entityType: 'budgets',
+          entityId: activeBudget.id,
+          action: 'update',
+          before: activeBudget,
+          after: updatedBudget,
+          source: 'home_budget_currency_conversion',
+        });
+        syncService.queueChange('audit_logs', auditLog.id, 'create', auditLog).catch(() => {});
       } catch {
         // Conversion failed (offline, rate not found) — keep old amount
       }
@@ -382,9 +495,22 @@ export const HomeScreen = () => {
     return { days, streakCount };
   }, [transactions]);
 
-  // ── Tasks: mock data (no task infrastructure yet) ──
-  const tasksDone = 0;
-  const tasksInProgress = 0;
+  // ── Inbox: derived unresolved finance decisions (no AI/API calls) ──
+  const debts = useMemo(() => {
+    if (!userId) return [];
+    try { return debtQueries.findByUser(userId); } catch { return []; }
+  }, [userId]);
+  const inboxSummary = useMemo(() => summarizeInbox(buildInboxItems({
+    transactions,
+    categories,
+    budgets,
+    recurrings,
+    debts,
+    currency,
+  })), [budgets, categories, currency, debts, recurrings, transactions]);
+  const openInbox = useCallback(() => {
+    navigation.dispatch(CommonActions.navigate({ name: 'TasksTab', params: { screen: 'Tasks' } }));
+  }, [navigation]);
 
   // ── Budget modal state ──
   const [showBudgetModal, setShowBudgetModal] = useState(false);
@@ -492,8 +618,21 @@ export const HomeScreen = () => {
     const now = Date.now();
     try {
       if (activeBudget) {
-        budgetQueries.update(activeBudget.id, { amount: num, updatedAt: now });
-        updateBudgetInStore(activeBudget.id, { amount: num, updatedAt: now });
+        const patch = { amount: num, updatedAt: now };
+        const updatedBudget = { ...activeBudget, ...patch };
+        budgetQueries.update(activeBudget.id, patch);
+        updateBudgetInStore(activeBudget.id, patch);
+        await syncService.queueChange('budgets', activeBudget.id, 'update', updatedBudget);
+        const auditLog = auditLogQueries.record({
+          userId: activeBudget.userId,
+          entityType: 'budgets',
+          entityId: activeBudget.id,
+          action: 'update',
+          before: activeBudget,
+          after: updatedBudget,
+          source: 'home_budget_modal',
+        });
+        await syncService.queueChange('audit_logs', auditLog.id, 'create', auditLog);
       } else {
         const id = generateUUID();
         const budgetData = {
@@ -507,14 +646,19 @@ export const HomeScreen = () => {
           isActive: true,
           createdAt: now,
           updatedAt: now,
-          categoryId: null,
-          familyGroupId: null,
-          endDate: null,
-          remoteId: null,
-          syncedAt: null,
         };
         budgetQueries.insert(budgetData);
         addBudget(budgetData);
+        await syncService.queueChange('budgets', budgetData.id, 'create', budgetData);
+        const auditLog = auditLogQueries.record({
+          userId: budgetData.userId,
+          entityType: 'budgets',
+          entityId: budgetData.id,
+          action: 'create',
+          after: budgetData,
+          source: 'home_budget_modal',
+        });
+        await syncService.queueChange('audit_logs', auditLog.id, 'create', auditLog);
       }
       try { await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
       handleCloseBudgetModal();
@@ -526,8 +670,8 @@ export const HomeScreen = () => {
   }, [budgetAmountInput, activeBudget, userId, currency, t, updateBudgetInStore, addBudget, handleCloseBudgetModal]);
 
   const handleVoicePress = useCallback(() => {
-    // TODO: voice input, future feature
-  }, []);
+    navigation.navigate('AddTransaction');
+  }, [navigation]);
 
   // ═══════════════════════════════════════════════
   // Render
@@ -569,29 +713,60 @@ export const HomeScreen = () => {
         </View>
 
         {/* ── Budget Card ── */}
-        <View style={styles.budgetCard}>
-          {/* Header row: badge + chevron */}
-          <TouchableOpacity
-            style={styles.budgetHeader}
-            onPress={handleBudgetCardPress}
-            activeOpacity={0.7}
-          >
+        <TouchableOpacity style={styles.budgetCard} onPress={handleBudgetCardPress} activeOpacity={0.82}>
+          <View style={styles.budgetHeader}>
             <View style={styles.budgetBadge}>
-              <Text style={styles.budgetBadgeText}>
-                {t('home.monthlyBudget')}
-              </Text>
+              <Text style={styles.budgetBadgeText}>{t('home.remainder')}</Text>
             </View>
             <ChevronRightIcon size={24} />
-          </TouchableOpacity>
+          </View>
 
-          {/* Budget amount */}
-          <Text style={styles.budgetAmount}>
-            {formatCurrency(budgetAmount, currency)}
+          <Text style={styles.budgetTotalAmount}>{formatCurrency(budgetAmount, currency)}</Text>
+          <Text style={styles.budgetRemainderAmount}>
+            {formatCurrency(remaining >= 0 ? remaining : 0, currency)}
+          </Text>
+          <Text style={styles.budgetSpentCaption}>
+            {budgetSpentPercent}% {t('home.budgetSpentCaption')}
           </Text>
 
-          {/* Period pills */}
+          <View style={styles.categoryBar}>
+            {categorySegments.length > 0 ? (
+              categorySegments.map((segment, index) => {
+                const width = spent > 0 ? Math.max(12, (segment.amount / spent) * 100) : 20;
+                return (
+                  <View
+                    key={segment.categoryId}
+                    style={[
+                      styles.categoryBarSegment,
+                      {
+                        width: `${Math.min(width, 100)}%`,
+                        backgroundColor: segment.color,
+                        marginLeft: index === 0 ? 0 : -10,
+                        zIndex: categorySegments.length - index,
+                      },
+                    ]}
+                  />
+                );
+              })
+            ) : (
+              <View style={styles.categoryBarEmpty} />
+            )}
+          </View>
+
+          <View style={styles.categoryLegend}>
+            {categorySegments.length > 0 ? categorySegments.map((segment) => (
+              <View key={segment.categoryId} style={styles.categoryLegendItem}>
+                <View style={[styles.categoryLegendDot, { backgroundColor: segment.color }]} />
+                <Text style={styles.categoryLegendText} numberOfLines={1}>
+                  {segment.name}
+                </Text>
+              </View>
+            )) : (
+              <Text style={styles.categoryLegendEmpty}>{t('home.noSpendingYet')}</Text>
+            )}
+          </View>
+
           <View style={styles.periodContainer}>
-            {/* Animated sliding indicator */}
             {pillWidth > 0 && (
               <Animated.View
                 style={[
@@ -611,62 +786,71 @@ export const HomeScreen = () => {
                   onLayout={index === 0 ? handlePillLayout : undefined}
                   activeOpacity={0.7}
                 >
-                  <Text
-                    style={[
-                      styles.periodPillText,
-                      isActive && styles.periodPillTextActive,
-                    ]}
-                  >
+                  <Text style={[styles.periodPillText, isActive && styles.periodPillTextActive]}>
                     {PERIOD_NUMBERS[period]}{t('home.dayShort')}
                   </Text>
                 </TouchableOpacity>
               );
             })}
           </View>
+        </TouchableOpacity>
 
-          {/* Spent / Remaining sub-cards (1:1 settingsField style) */}
-          <View style={styles.subCardsRow}>
-            {/* Spent */}
-            <TouchableOpacity style={styles.subCard} activeOpacity={0.7}>
-              <View style={styles.subCardTexts}>
-                <Text style={styles.subCardLabel}>{t('home.spent')}</Text>
-                <View style={styles.subCardValueRow}>
-                  <Text
-                    style={styles.subCardValueSpent}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    -{formatAmount(spent, currency)}
-                  </Text>
-                  <Text style={styles.subCardSymbolSpent}>
-                    {getCurrencySymbol(currency)}
-                  </Text>
-                </View>
-              </View>
-              <ChevronRightIcon size={24} />
-            </TouchableOpacity>
-
-            {/* Credited */}
-            <TouchableOpacity style={styles.subCard} activeOpacity={0.7}>
-              <View style={styles.subCardTexts}>
-                <Text style={styles.subCardLabel}>{t('home.remaining')}</Text>
-                <View style={styles.subCardValueRow}>
-                  <Text
-                    style={styles.subCardValueCredited}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    +{formatAmount(remaining >= 0 ? remaining : 0, currency)}
-                  </Text>
-                  <Text style={styles.subCardSymbolCredited}>
-                    {getCurrencySymbol(currency)}
-                  </Text>
-                </View>
-              </View>
-              <ChevronRightIcon size={24} />
-            </TouchableOpacity>
+        {/* ── Latest Transactions ── */}
+        <TouchableOpacity
+          style={styles.latestTransactionsCard}
+          onPress={() => navigation.navigate('Transactions')}
+          activeOpacity={0.86}
+        >
+          <View style={styles.latestHeader}>
+            <Text style={styles.latestEyebrow}>{t('home.latestTransactions')}</Text>
+            <ChevronRightIcon size={22} />
           </View>
-        </View>
+
+          {recentTransactions.length > 0 ? (
+            <View style={styles.latestList}>
+              {recentTransactions.map((transaction) => {
+                const category = categories.find((item) => item.id === transaction.categoryId);
+                const categoryName = category
+                  ? (category.name.startsWith('categories.') ? t(category.name) : category.name)
+                  : 'Other';
+                const isIncome = transaction.type === 'income';
+
+                return (
+                  <TouchableOpacity
+                    key={transaction.id}
+                    style={styles.latestRow}
+                    onPress={() => navigation.navigate('TransactionDetail', { transactionId: transaction.id })}
+                    activeOpacity={0.72}
+                  >
+                    <View style={[styles.latestIcon, { backgroundColor: `${category?.color || '#FFFFFF'}22` }]}>
+                      <Text style={styles.latestIconText}>{category?.icon || (isIncome ? '↗' : '↘')}</Text>
+                    </View>
+                    <View style={styles.latestTextBlock}>
+                      <Text style={styles.latestTitle} numberOfLines={1}>
+                        {transaction.description || categoryName}
+                      </Text>
+                      <Text style={styles.latestSubtitle} numberOfLines={1}>
+                        {categoryName}
+                      </Text>
+                    </View>
+                    <View style={styles.latestAmountBlock}>
+                      <Text style={isIncome ? styles.latestIncome : styles.latestExpense}>
+                        {isIncome ? '+' : '-'}{formatAmount(transaction.amount, transaction.currency)} {getCurrencySymbol(transaction.currency)}
+                      </Text>
+                      <Text style={styles.latestTime}>{formatTransactionTime(transaction.date)}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.latestEmpty}>
+              <Text style={styles.latestEmptyTitle}>{t('transactions.noTransactions')}</Text>
+              <Text style={styles.latestEmptySubtitle}>{t('home.addTransaction')}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
 
         {/* ── Streak + Tasks Row ── */}
         <View style={styles.infoCardsRow}>
@@ -678,32 +862,32 @@ export const HomeScreen = () => {
             <StreakGrid activeDays={streakData.days} />
           </View>
 
-          {/* Tasks */}
-          <View style={styles.infoCard}>
+          {/* Inbox */}
+          <TouchableOpacity style={styles.infoCard} activeOpacity={0.78} onPress={openInbox}>
             <View style={styles.infoBadge}>
-              <Text style={styles.infoBadgeText}>{t('home.tasksLabel')}</Text>
+              <Text style={styles.infoBadgeText}>INBOX</Text>
             </View>
             <View style={styles.taskCenter}>
-              <Text style={styles.taskBigValue}>{tasksDone}</Text>
-              <Text style={styles.taskSubtext}>{t('home.done')}</Text>
+              <Text style={styles.taskBigValue}>{inboxSummary.total}</Text>
+              <Text style={styles.taskSubtext}>{inboxSummary.total === 0 ? 'clean' : 'open'}</Text>
             </View>
             <View style={styles.taskStatsRow}>
               <View style={styles.taskStat}>
-                <View style={[styles.taskStatBar, { backgroundColor: colors.white[100], boxShadow: '0 0 24px 2px rgba(255, 255, 255, 0.5)' }]} />
+                <View style={[styles.taskStatBar, { backgroundColor: colors.error[400], boxShadow: '0 0 24px 2px rgba(245, 88, 88, 0.5)' }]} />
                 <View style={styles.taskStatTexts}>
-                  <Text style={styles.taskStatLabel}>{t('home.archive')}</Text>
-                  <Text style={styles.taskStatCount}>{tasksDone}</Text>
+                  <Text style={styles.taskStatLabel}>Critical</Text>
+                  <Text style={styles.taskStatCount}>{inboxSummary.critical}</Text>
                 </View>
               </View>
               <View style={styles.taskStat}>
                 <View style={[styles.taskStatBar, { backgroundColor: colors.warning[500], boxShadow: '0 0 24px 2px rgba(250, 173, 20, 0.5)' }]} />
                 <View style={styles.taskStatTexts}>
-                  <Text style={styles.taskStatLabel}>{t('home.inProgress')}</Text>
-                  <Text style={styles.taskStatCount}>{tasksInProgress}</Text>
+                  <Text style={styles.taskStatLabel}>Warning</Text>
+                  <Text style={styles.taskStatCount}>{inboxSummary.warning}</Text>
                 </View>
               </View>
             </View>
-          </View>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -1046,6 +1230,250 @@ const styles = StyleSheet.create({
     color: '#3BD57C',
   },
 
+  // ── Monthly Value Loop ──
+  valueLoopCard: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: borderRadius.xl,
+    padding: spacing.md,
+    marginTop: 6,
+    gap: spacing.md,
+  },
+  valueLoopHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  valueLoopTitle: {
+    ...typography.bodyLargeMedium,
+    color: colors.text,
+  },
+  valueLoopMuted: {
+    ...typography.caption,
+    color: colors.textTertiary,
+  },
+  valueLoopStatsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  valueLoopStat: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  valueLoopLabel: {
+    ...typography.caption,
+    color: colors.white[40],
+  },
+  valueLoopIncome: {
+    ...typography.bodyMedium,
+    color: '#3BD57C',
+  },
+  valueLoopExpense: {
+    ...typography.bodyMedium,
+    color: '#FF5151',
+  },
+  valueLoopDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  valueLoopBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  valueLoopRightAligned: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  valueLoopTopCategory: {
+    ...typography.bodyMedium,
+    color: colors.text,
+    maxWidth: 170,
+    textAlign: 'right',
+  },
+  recentList: {
+    gap: spacing.sm,
+  },
+  recentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+  },
+  recentTextBlock: {
+    flex: 1,
+    gap: 3,
+  },
+  recentTitle: {
+    ...typography.smallMedium,
+    color: colors.text,
+  },
+  recentSubtitle: {
+    ...typography.caption,
+    color: colors.textTertiary,
+  },
+  recentIncome: {
+    ...typography.smallMedium,
+    color: '#3BD57C',
+  },
+  recentExpense: {
+    ...typography.smallMedium,
+    color: '#FF5151',
+  },
+
+  budgetTotalAmount: {
+    fontFamily: fontFamily.regular,
+    fontSize: 20,
+    lineHeight: 26,
+    color: colors.white[50],
+    marginTop: -8,
+    marginBottom: 4,
+  },
+  budgetRemainderAmount: {
+    fontFamily: fontFamily.medium,
+    fontSize: 42,
+    lineHeight: 46,
+    color: colors.text,
+    marginBottom: 8,
+  },
+  budgetSpentCaption: {
+    fontFamily: fontFamily.regular,
+    fontSize: 15,
+    lineHeight: 20,
+    color: colors.white[50],
+    marginBottom: 16,
+  },
+  categoryBar: {
+    height: 36,
+    borderRadius: 18,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginBottom: 14,
+  },
+  categoryBarSegment: {
+    height: 36,
+    borderRadius: 18,
+  },
+  categoryBarEmpty: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+  },
+  categoryLegend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  categoryLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    maxWidth: '48%',
+  },
+  categoryLegendDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  categoryLegendText: {
+    fontFamily: fontFamily.regular,
+    fontSize: 12,
+    lineHeight: 15,
+    color: colors.white[50],
+  },
+  categoryLegendEmpty: {
+    fontFamily: fontFamily.regular,
+    fontSize: 13,
+    lineHeight: 17,
+    color: colors.white[40],
+  },
+  latestTransactionsCard: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: borderRadius.xl,
+    padding: spacing.md,
+    marginTop: 6,
+  },
+  latestHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  latestEyebrow: {
+    ...typography.captionMedium,
+    color: colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  latestList: {
+    gap: 10,
+  },
+  latestRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 54,
+  },
+  latestIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  latestIconText: {
+    fontSize: 20,
+  },
+  latestTextBlock: {
+    flex: 1,
+    gap: 3,
+  },
+  latestTitle: {
+    ...typography.bodyMedium,
+    color: colors.text,
+  },
+  latestSubtitle: {
+    ...typography.caption,
+    color: colors.white[40],
+  },
+  latestAmountBlock: {
+    alignItems: 'flex-end',
+    gap: 4,
+    maxWidth: 110,
+  },
+  latestIncome: {
+    ...typography.smallMedium,
+    color: '#3BD57C',
+  },
+  latestExpense: {
+    ...typography.smallMedium,
+    color: '#FF5151',
+  },
+  latestTime: {
+    ...typography.caption,
+    color: colors.white[40],
+  },
+  latestEmpty: {
+    borderRadius: borderRadius.lg,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    padding: spacing.md,
+    gap: 4,
+  },
+  latestEmptyTitle: {
+    ...typography.bodyMedium,
+    color: colors.text,
+  },
+  latestEmptySubtitle: {
+    ...typography.caption,
+    color: colors.white[40],
+  },
+
   // ── Info Cards (Streak + Tasks) ──
   infoCardsRow: {
     flexDirection: 'row',
@@ -1160,8 +1588,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(98, 214, 147, 0.33)',
     boxShadow: '0 0 25px 0 rgba(10, 203, 91, 0.5)',
     overflow: 'hidden',
-  },
-  voiceNoise: {
+  },  voiceNoise: {
     ...StyleSheet.absoluteFillObject,
     width: 60,
     height: 60,

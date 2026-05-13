@@ -9,7 +9,7 @@ export const categories = sqliteTable(
     name: text('name').notNull(),
     icon: text('icon').notNull().default('📁'),
     color: text('color').notNull().default('#808080'),
-    type: text('type', { enum: ['income', 'expense', 'transfer'] }).notNull(),
+    type: text('type', { enum: ['income', 'expense'] }).notNull(),
     isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
     parentId: text('parent_id'),
     sortOrder: integer('sort_order').notNull().default(0),

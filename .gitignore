@@ -26,6 +26,10 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 
+# local Cloudflare/Wrangler state
+.wrangler/
+backend/.wrangler/
+
 # macOS
 .DS_Store
 *.pem
@@ -46,3 +50,6 @@ yarn-error.*
 
 # Windows artifacts
 nul
+
+# Agent-local notes
+.learnings/

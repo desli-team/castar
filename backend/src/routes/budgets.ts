@@ -9,6 +9,7 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { clearTombstone, recordTombstone } from '../services/tombstones';
 import type { Env, Variables } from '../types';
 
 const budgets = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -21,39 +22,70 @@ const createBudgetSchema = z.object({
   name: z.string().min(1).max(100),
   amount: z.number().positive(),
   currency: z.string().min(3).max(3).default('UZS'),
-  period: z.enum(['daily', 'weekly', 'monthly', 'yearly']),
+  period: z.enum(['daily', 'weekly', 'fourteen_days', 'monthly', 'yearly']),
   start_date: z.number().int().positive(),
+  warning_threshold: z.number().min(1).max(200).default(80),
+  critical_threshold: z.number().min(1).max(250).default(100),
+  is_hard_limit: z.boolean().default(false),
+  rollover_enabled: z.boolean().default(false),
+}).refine((data) => data.warning_threshold < data.critical_threshold, {
+  message: 'warning_threshold must be below critical_threshold',
+  path: ['warning_threshold'],
 });
 
 const updateBudgetSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   amount: z.number().positive().optional(),
   currency: z.string().min(3).max(3).optional(),
-  period: z.enum(['daily', 'weekly', 'monthly', 'yearly']).optional(),
+  period: z.enum(['daily', 'weekly', 'fourteen_days', 'monthly', 'yearly']).optional(),
   category_id: z.string().nullish(),
   start_date: z.number().int().positive().optional(),
+  warning_threshold: z.number().min(1).max(200).optional(),
+  critical_threshold: z.number().min(1).max(250).optional(),
+  is_hard_limit: z.boolean().optional(),
+  rollover_enabled: z.boolean().optional(),
+}).refine((data) => {
+  if (data.warning_threshold === undefined || data.critical_threshold === undefined) return true;
+  return data.warning_threshold < data.critical_threshold;
+}, {
+  message: 'warning_threshold must be below critical_threshold',
+  path: ['warning_threshold'],
 });
 
 // ── Helpers ──
 
-/** Calculate current period start timestamp for a budget */
-function getPeriodStart(period: string): number {
+/** Calculate current period start timestamp for a budget, never before its configured start date. */
+function getPeriodStart(period: string, startDate: number): number {
   const now = new Date();
+  let periodStart: number;
   switch (period) {
     case 'daily':
-      return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      break;
     case 'weekly': {
       const day = now.getDay();
       const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-      return new Date(now.getFullYear(), now.getMonth(), diff).getTime();
+      periodStart = new Date(now.getFullYear(), now.getMonth(), diff).getTime();
+      break;
+    }
+    case 'fourteen_days': {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 13);
+      start.setHours(0, 0, 0, 0);
+      periodStart = start.getTime();
+      break;
     }
     case 'monthly':
-      return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      periodStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      break;
     case 'yearly':
-      return new Date(now.getFullYear(), 0, 1).getTime();
+      periodStart = new Date(now.getFullYear(), 0, 1).getTime();
+      break;
     default:
-      return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      periodStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      break;
   }
+  return Math.max(periodStart, startDate);
 }
 
 // ── Routes ──
@@ -71,17 +103,18 @@ budgets.get('/', async (c) => {
   const { results: rows } = await db.prepare(sql).bind(userId).all<{
     id: string; user_id: string; category_id: string | null; name: string;
     amount: number; currency: string; period: string; start_date: number;
+    warning_threshold: number; critical_threshold: number; is_hard_limit: number; rollover_enabled: number;
     is_active: number; created_at: number; updated_at: number;
   }>();
 
   // Enrich each budget with spent amount from transactions in current period
   const enriched = await Promise.all(
     rows.map(async (budget) => {
-      const periodStart = getPeriodStart(budget.period);
+      const periodStart = getPeriodStart(budget.period, budget.start_date);
       const now = Date.now();
 
-      let spentSql = 'SELECT COALESCE(SUM(amount), 0) as spent FROM transactions WHERE user_id = ? AND type = ? AND date >= ? AND date <= ?';
-      const params: unknown[] = [userId, 'expense', periodStart, now];
+      let spentSql = 'SELECT COALESCE(SUM(amount), 0) as spent FROM transactions WHERE user_id = ? AND type = ? AND currency = ? AND date >= ? AND date <= ?';
+      const params: unknown[] = [userId, 'expense', budget.currency, periodStart, now];
 
       if (budget.category_id) {
         spentSql += ' AND category_id = ?';
@@ -90,10 +123,18 @@ budgets.get('/', async (c) => {
 
       const row = await db.prepare(spentSql).bind(...params).first<{ spent: number }>();
       const spent = row?.spent ?? 0;
-      const remaining = Math.max(0, budget.amount - spent);
+      const remaining = budget.amount - spent;
       const percentage = budget.amount > 0 ? Math.min(100, Math.round((spent / budget.amount) * 10000) / 100) : 0;
+      const rawPercentage = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
+      const health = remaining < 0
+        ? 'over'
+        : rawPercentage >= budget.critical_threshold
+          ? 'critical'
+          : rawPercentage >= budget.warning_threshold
+            ? 'warning'
+            : 'safe';
 
-      return { ...budget, spent, remaining, percentage, period_start: periodStart };
+      return { ...budget, spent, remaining, percentage, health, period_start: periodStart };
     }),
   );
 
@@ -118,10 +159,11 @@ budgets.post('/', async (c) => {
 
   await db
     .prepare(
-      'INSERT INTO budgets (id, user_id, category_id, name, amount, currency, period, start_date, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)',
+      'INSERT INTO budgets (id, user_id, category_id, name, amount, currency, period, start_date, warning_threshold, critical_threshold, is_hard_limit, rollover_enabled, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)',
     )
-    .bind(data.id, userId, data.category_id ?? null, data.name, data.amount, data.currency, data.period, data.start_date, now, now)
+    .bind(data.id, userId, data.category_id ?? null, data.name, data.amount, data.currency, data.period, data.start_date, data.warning_threshold, data.critical_threshold, data.is_hard_limit ? 1 : 0, data.rollover_enabled ? 1 : 0, now, now)
     .run();
+  await clearTombstone(db, userId, 'budgets', data.id);
 
   return c.json({ ok: true, data: { id: data.id } }, 201);
 });
@@ -154,6 +196,10 @@ budgets.put('/:id', async (c) => {
   if (data.period !== undefined) { sets.push('period = ?'); values.push(data.period); }
   if (data.category_id !== undefined) { sets.push('category_id = ?'); values.push(data.category_id ?? null); }
   if (data.start_date !== undefined) { sets.push('start_date = ?'); values.push(data.start_date); }
+  if (data.warning_threshold !== undefined) { sets.push('warning_threshold = ?'); values.push(data.warning_threshold); }
+  if (data.critical_threshold !== undefined) { sets.push('critical_threshold = ?'); values.push(data.critical_threshold); }
+  if (data.is_hard_limit !== undefined) { sets.push('is_hard_limit = ?'); values.push(data.is_hard_limit ? 1 : 0); }
+  if (data.rollover_enabled !== undefined) { sets.push('rollover_enabled = ?'); values.push(data.rollover_enabled ? 1 : 0); }
 
   if (sets.length === 0) return c.json({ ok: true, data: { id } });
 
@@ -173,7 +219,9 @@ budgets.delete('/:id', async (c) => {
   const existing = await db.prepare('SELECT id FROM budgets WHERE id = ? AND user_id = ?').bind(id, userId).first();
   if (!existing) return c.json({ ok: false, error: 'Budget not found' }, 404);
 
-  await db.prepare('UPDATE budgets SET is_active = 0, updated_at = ? WHERE id = ? AND user_id = ?').bind(Date.now(), id, userId).run();
+  const deletedAt = Date.now();
+  await db.prepare('UPDATE budgets SET is_active = 0, updated_at = ? WHERE id = ? AND user_id = ?').bind(deletedAt, id, userId).run();
+  await recordTombstone(db, userId, 'budgets', id, deletedAt);
   return c.json({ ok: true });
 });
 

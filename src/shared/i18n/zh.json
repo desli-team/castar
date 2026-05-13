@@ -88,7 +88,7 @@
   "tabs": {
     "home": "\u9996\u9875",
     "monitoring": "\u76d1\u63a7",
-    "tasks": "\u4efb\u52a1",
+    "tasks": "Inbox",
     "profile": "\u4e2a\u4eba"
   },
   "home": {
@@ -101,7 +101,7 @@
     "streak": "天连续",
     "tasksThisMonth": "本月任务",
     "streakLabel": "连续",
-    "tasksLabel": "任务",
+    "tasksLabel": "INBOX",
     "done": "已完成",
     "archive": "归档",
     "inProgress": "进行中",

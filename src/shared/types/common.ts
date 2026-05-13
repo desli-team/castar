@@ -4,12 +4,19 @@
 
 // === Enums as union types ===
 
-export type TransactionType = 'income' | 'expense' | 'transfer';
-export type BudgetPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
+export type TransactionType = 'income' | 'expense';
+export type BudgetPeriod = 'daily' | 'weekly' | 'fourteen_days' | 'monthly' | 'yearly';
+export type RecurringFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type AccountType = 'cash' | 'card' | 'bank' | 'savings';
 export type FamilyRole = 'owner' | 'admin' | 'member';
 export type Currency = 'UZS' | 'USD' | 'EUR' | 'RUB' | (string & {});
+export type SubscriptionTier = 'free' | 'premium' | (string & {});
+export type UserRole = 'user' | 'support' | 'admin' | (string & {});
+export type SubscriptionStatus = 'none' | 'trialing' | 'active' | 'past_due' | 'canceled' | (string & {});
 export type SyncAction = 'create' | 'update' | 'delete';
+export type AuditLogAction = 'create' | 'update' | 'delete' | 'restore' | 'settle';
+export type DebtDirection = 'i_owe' | 'owes_me';
+export type DebtStatus = 'active' | 'settled';
 
 // === Entities ===
 
@@ -22,6 +29,10 @@ export interface User {
   defaultCurrency: Currency;
   language: 'uz' | 'ru' | 'en';
   isPublic: boolean;
+  tier?: SubscriptionTier;
+  role?: UserRole;
+  premiumUntil?: number | null;
+  subscriptionStatus?: SubscriptionStatus;
   createdAt: number;
   updatedAt: number;
   syncedAt?: number;
@@ -93,7 +104,9 @@ export interface Transaction {
   date: number;
   isRecurring: boolean;
   recurringId?: string;
+  debtId?: string;
   voiceInput: boolean;
+  reviewed?: boolean;
   createdAt: number;
   updatedAt: number;
   syncedAt?: number;
@@ -111,6 +124,10 @@ export interface Budget {
   period: BudgetPeriod;
   startDate: number;
   endDate?: number;
+  warningThreshold?: number;
+  criticalThreshold?: number;
+  isHardLimit?: boolean;
+  rolloverEnabled?: boolean;
   isActive: boolean;
   createdAt: number;
   updatedAt: number;
@@ -130,11 +147,47 @@ export interface RecurringTransaction {
   amount: number;
   currency: Currency;
   description?: string;
-  frequency: BudgetPeriod;
+  frequency: RecurringFrequency;
   nextDate: number;
   isActive: boolean;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface Debt {
+  id: string;
+  remoteId?: string;
+  userId: string;
+  personName: string;
+  direction: DebtDirection;
+  principalAmount: number;
+  remainingAmount: number;
+  currency: Currency;
+  categoryId?: string;
+  accountId?: string;
+  dueDate?: number;
+  note?: string;
+  status: DebtStatus;
+  createdAt: number;
+  updatedAt: number;
+  settledAt?: number;
+  syncedAt?: number;
+}
+
+export interface DebtRepayment {
+  id: string;
+  remoteId?: string;
+  userId: string;
+  debtId: string;
+  transactionId?: string;
+  accountId?: string;
+  amount: number;
+  currency: Currency;
+  note?: string;
+  date: number;
+  createdAt: number;
+  updatedAt: number;
+  syncedAt?: number;
 }
 
 export interface ExchangeRate {
@@ -143,6 +196,20 @@ export interface ExchangeRate {
   targetCurrency: Currency;
   rate: number;
   fetchedAt: number;
+}
+
+export interface AuditLog {
+  id: string;
+  remoteId?: string;
+  userId: string;
+  entityType: string;
+  entityId: string;
+  action: AuditLogAction;
+  beforeJson?: string;
+  afterJson?: string;
+  source: string;
+  createdAt: number;
+  syncedAt?: number;
 }
 
 export interface SyncQueueItem {
@@ -203,7 +270,9 @@ export interface CreateTransactionDTO {
   currency: Currency;
   description?: string;
   date: number;
+  debtId?: string;
   voiceInput?: boolean;
+  reviewed?: boolean;
 }
 
 export interface UpdateTransactionDTO extends Partial<CreateTransactionDTO> {}
@@ -217,6 +286,10 @@ export interface CreateBudgetDTO {
   period: BudgetPeriod;
   startDate: number;
   endDate?: number;
+  warningThreshold?: number;
+  criticalThreshold?: number;
+  isHardLimit?: boolean;
+  rolloverEnabled?: boolean;
 }
 
 export interface UpdateBudgetDTO extends Partial<CreateBudgetDTO> {}

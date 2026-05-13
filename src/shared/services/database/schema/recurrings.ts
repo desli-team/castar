@@ -11,7 +11,7 @@ export const recurrings = sqliteTable('recurrings', {
   categoryId: text('category_id')
     .notNull()
     .references(() => categories.id),
-  type: text('type', { enum: ['income', 'expense', 'transfer'] }).notNull(),
+  type: text('type', { enum: ['income', 'expense'] }).notNull(),
   amount: real('amount').notNull(),
   currency: text('currency').notNull().default('UZS'),
   description: text('description'),

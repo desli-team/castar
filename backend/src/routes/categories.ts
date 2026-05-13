@@ -2,14 +2,16 @@
  * Castar — Category Routes
  *
  * GET    /categories          — List user categories
- * POST   /categories          — Create (tier limit: free ≤ 5 custom)
+ * POST   /categories          — Create (tier limit: free cannot create custom categories)
  * PUT    /categories/:id      — Update
  * DELETE /categories/:id      — Delete + reassign transactions to uncategorized
  */
 
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { clearTombstone, recordTombstone } from '../services/tombstones';
 import type { Env, Variables } from '../types';
+import { getUserAccess } from '../services/entitlements';
 
 const categories = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -24,6 +26,12 @@ const createCategorySchema = z.object({
   is_default: z.union([z.boolean(), z.number()]).transform((v) => (v ? 1 : 0)).default(0),
   sort_order: z.number().int().default(0),
 });
+
+const LOCKED_OTHER_KEYS = new Set(['categories.other_expense', 'categories.other_income']);
+
+function isLockedOtherCategory(row: { name: string; is_default: number }) {
+  return Boolean(row.is_default && LOCKED_OTHER_KEYS.has(row.name));
+}
 
 const updateCategorySchema = z.object({
   name: z.string().min(1).max(50).optional(),
@@ -66,14 +74,12 @@ categories.post('/', async (c) => {
   const data = parsed.data;
   const now = Date.now();
 
-  // Tier limit: free users ≤ 20 custom categories
-  const countResult = await db
-    .prepare('SELECT COUNT(*) as cnt FROM categories WHERE user_id = ? AND is_default = 0')
-    .bind(userId)
-    .first<{ cnt: number }>();
-
-  if (countResult && countResult.cnt >= 20) {
-    return c.json({ ok: false, error: 'Category limit reached (max 20 custom)' }, 403);
+  // Tier rule: free users keep editable starter categories + locked Other;
+  // paid users can create unlimited custom categories. Default/system category
+  // creation is allowed for seed/sync bootstrap only.
+  const access = await getUserAccess(db, userId);
+  if (!data.is_default && !access.entitlements.canCreateCustomCategories) {
+    return c.json({ ok: false, error: 'Free plan includes starter categories only. Upgrade to create custom categories.' }, 403);
   }
 
   await db
@@ -82,6 +88,7 @@ categories.post('/', async (c) => {
     )
     .bind(data.id, userId, data.name, data.icon, data.color, data.type, data.is_default, data.sort_order, now, now)
     .run();
+  await clearTombstone(db, userId, 'categories', data.id);
 
   return c.json({ ok: true, data: { id: data.id } }, 201);
 });
@@ -94,9 +101,9 @@ categories.put('/:id', async (c) => {
 
   // Verify ownership
   const existing = await db
-    .prepare('SELECT id, is_default FROM categories WHERE id = ? AND user_id = ?')
+    .prepare('SELECT id, name, is_default FROM categories WHERE id = ? AND user_id = ?')
     .bind(id, userId)
-    .first<{ id: string; is_default: number }>();
+    .first<{ id: string; name: string; is_default: number }>();
 
   if (!existing) return c.json({ ok: false, error: 'Category not found' }, 404);
 
@@ -109,6 +116,9 @@ categories.put('/:id', async (c) => {
   }
 
   const data = parsed.data;
+  if (isLockedOtherCategory(existing) && (data.name !== undefined || data.type !== undefined)) {
+    return c.json({ ok: false, error: 'Other category name and type cannot be changed' }, 400);
+  }
   const now = Date.now();
 
   // Build dynamic SET clause
@@ -142,19 +152,22 @@ categories.delete('/:id', async (c) => {
 
   // Verify ownership
   const existing = await db
-    .prepare('SELECT id, is_default FROM categories WHERE id = ? AND user_id = ?')
+    .prepare('SELECT id, name, is_default FROM categories WHERE id = ? AND user_id = ?')
     .bind(id, userId)
-    .first<{ id: string; is_default: number }>();
+    .first<{ id: string; name: string; is_default: number }>();
 
   if (!existing) return c.json({ ok: false, error: 'Category not found' }, 404);
-  if (existing.is_default) return c.json({ ok: false, error: 'Cannot delete default category' }, 400);
+  if (isLockedOtherCategory(existing)) return c.json({ ok: false, error: 'Cannot delete Other category' }, 400);
+
+  const deletedAt = Date.now();
 
   // Nullify category_id on transactions that used this category
   await db.batch([
-    db.prepare('UPDATE transactions SET category_id = NULL, updated_at = ? WHERE category_id = ? AND user_id = ?').bind(Date.now(), id, userId),
-    db.prepare('UPDATE budgets SET category_id = NULL, updated_at = ? WHERE category_id = ? AND user_id = ?').bind(Date.now(), id, userId),
+    db.prepare('UPDATE transactions SET category_id = NULL, updated_at = ? WHERE category_id = ? AND user_id = ?').bind(deletedAt, id, userId),
+    db.prepare('UPDATE budgets SET category_id = NULL, updated_at = ? WHERE category_id = ? AND user_id = ?').bind(deletedAt, id, userId),
     db.prepare('DELETE FROM categories WHERE id = ? AND user_id = ?').bind(id, userId),
   ]);
+  await recordTombstone(db, userId, 'categories', id, deletedAt);
 
   return c.json({ ok: true });
 });

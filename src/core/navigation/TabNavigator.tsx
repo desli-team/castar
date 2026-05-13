@@ -19,16 +19,30 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 
 // Screens
 import { HomeScreen } from '../../features/transactions/screens/HomeScreen';
+import { TransactionsScreen } from '../../features/transactions/screens/TransactionsScreen';
 import { AddTransactionScreen } from '../../features/transactions/screens/AddTransactionScreen';
 import { TransactionDetailScreen } from '../../features/transactions/screens/TransactionDetailScreen';
 import { TasksScreen } from '../../features/tasks/screens/TasksScreen';
 import { AnalyticsScreen } from '../../features/analytics/screens/AnalyticsScreen';
+import { IncomeAnalyticsScreen } from '../../features/analytics/screens/IncomeAnalyticsScreen';
+import { SpendingCategoryDetailScreen } from '../../features/analytics/screens/SpendingCategoryDetailScreen';
+import { TransactionReviewScreen } from '../../features/analytics/screens/TransactionReviewScreen';
 import { ProfileScreen } from '../../features/profile/screens/ProfileScreen';
 import { SettingsScreen } from '../../features/profile/screens/SettingsScreen';
 import { CategoriesScreen } from '../../features/categories/screens/CategoriesScreen';
+import { CategoryDetailScreen } from '../../features/categories/screens/CategoryDetailScreen';
 import { CreateCategoryScreen } from '../../features/categories/screens/CreateCategoryScreen';
 import { SubscriptionManagementScreen } from '../../features/profile/screens/SubscriptionManagementScreen';
+import { BudgetsScreen } from '../../features/budget/screens/BudgetsScreen';
+import { BudgetDetailScreen } from '../../features/budget/screens/BudgetDetailScreen';
+import { BudgetAlertsScreen } from '../../features/budget/screens/BudgetAlertsScreen';
 import { CreateBudgetScreen } from '../../features/budget/screens/CreateBudgetScreen';
+import { RecurringsScreen } from '../../features/recurring/screens/RecurringsScreen';
+import { CreateRecurringScreen } from '../../features/recurring/screens/CreateRecurringScreen';
+import { DebtsScreen } from '../../features/debts/screens/DebtsScreen';
+import { CreateDebtScreen } from '../../features/debts/screens/CreateDebtScreen';
+import { DebtDetailScreen } from '../../features/debts/screens/DebtDetailScreen';
+import { AddRepaymentScreen } from '../../features/debts/screens/AddRepaymentScreen';
 
 /* ── Constants ── */
 const INACTIVE_COLOR = '#828187';
@@ -100,8 +114,12 @@ const stackScreenOptions = {
 const HomeStackNavigator = () => (
   <HomeStack.Navigator screenOptions={stackScreenOptions}>
     <HomeStack.Screen name="Home" component={HomeScreen} />
+    <HomeStack.Screen name="Transactions" component={TransactionsScreen} />
     <HomeStack.Screen name="AddTransaction" component={AddTransactionScreen} />
     <HomeStack.Screen name="TransactionDetail" component={TransactionDetailScreen} />
+    <HomeStack.Screen name="Budgets" component={BudgetsScreen} />
+    <HomeStack.Screen name="BudgetAlerts" component={BudgetAlertsScreen} />
+    <HomeStack.Screen name="BudgetDetail" component={BudgetDetailScreen} />
     <HomeStack.Screen name="CreateBudget" component={CreateBudgetScreen} />
   </HomeStack.Navigator>
 );
@@ -109,12 +127,21 @@ const HomeStackNavigator = () => (
 const TasksStackNavigator = () => (
   <TasksStack.Navigator screenOptions={stackScreenOptions}>
     <TasksStack.Screen name="Tasks" component={TasksScreen} />
+    <TasksStack.Screen name="Recurrings" component={RecurringsScreen} />
+    <TasksStack.Screen name="CreateRecurring" component={CreateRecurringScreen} />
+    <TasksStack.Screen name="Debts" component={DebtsScreen} />
+    <TasksStack.Screen name="CreateDebt" component={CreateDebtScreen} />
+    <TasksStack.Screen name="DebtDetail" component={DebtDetailScreen} />
+    <TasksStack.Screen name="AddRepayment" component={AddRepaymentScreen} />
   </TasksStack.Navigator>
 );
 
 const MonitoringStackNavigator = () => (
   <MonitoringStack.Navigator screenOptions={stackScreenOptions}>
     <MonitoringStack.Screen name="Analytics" component={AnalyticsScreen} />
+    <MonitoringStack.Screen name="IncomeAnalytics" component={IncomeAnalyticsScreen} />
+    <MonitoringStack.Screen name="SpendingCategoryDetail" component={SpendingCategoryDetailScreen} />
+    <MonitoringStack.Screen name="TransactionReview" component={TransactionReviewScreen} />
   </MonitoringStack.Navigator>
 );
 
@@ -123,6 +150,7 @@ const ProfileStackNavigator = () => (
     <ProfileStack.Screen name="Profile" component={ProfileScreen} />
     <ProfileStack.Screen name="Settings" component={SettingsScreen} />
     <ProfileStack.Screen name="Categories" component={CategoriesScreen} />
+    <ProfileStack.Screen name="CategoryDetail" component={CategoryDetailScreen} />
     <ProfileStack.Screen name="CreateCategory" component={CreateCategoryScreen} />
     <ProfileStack.Screen
       name="SubscriptionManagement"

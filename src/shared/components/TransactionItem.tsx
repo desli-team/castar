@@ -11,7 +11,7 @@ interface TransactionItemProps {
   subtitle?: string;
   amount: number;
   currency: string;
-  type: 'income' | 'expense' | 'transfer';
+  type: 'income' | 'expense';
   onPress?: () => void;
 }
 

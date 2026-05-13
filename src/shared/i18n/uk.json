@@ -90,7 +90,7 @@
   "tabs": {
     "home": "Головна",
     "monitoring": "Моніторинг",
-    "tasks": "Завдання",
+    "tasks": "Inbox",
     "profile": "Профіль"
   },
   "home": {
@@ -103,7 +103,7 @@
     "streak": "днів поспіль",
     "tasksThisMonth": "завдань за місяць",
     "streakLabel": "Стрік",
-    "tasksLabel": "Завдання",
+    "tasksLabel": "INBOX",
     "done": "Готово",
     "archive": "Архів",
     "inProgress": "В процесі",

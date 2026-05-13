@@ -90,7 +90,7 @@
   "tabs": {
     "home": "Главная",
     "monitoring": "Мониторинг",
-    "tasks": "Задачи",
+    "tasks": "Inbox",
     "profile": "Профиль"
   },
   "home": {
@@ -103,7 +103,7 @@
     "streak": "дней подряд",
     "tasksThisMonth": "задач за месяц",
     "streakLabel": "Стрик",
-    "tasksLabel": "Задачи",
+    "tasksLabel": "INBOX",
     "done": "Готово",
     "archive": "Архив",
     "inProgress": "В процессе",

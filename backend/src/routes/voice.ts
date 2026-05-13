@@ -29,6 +29,7 @@ const MAX_AUDIO_SIZE = 10 * 1024 * 1024;
 
 interface GoogleSttResponse {
   results?: Array<{
+    languageCode?: string;
     alternatives?: Array<{
       transcript?: string;
       confidence?: number;
@@ -52,7 +53,8 @@ voice.post('/recognize', async (c) => {
     return c.json({ ok: false, error: 'Invalid form data' }, 400);
   }
 
-  // Extract language
+  // Extract preferred language + multilingual recognition list.
+  // Interface language is only a preference; recognition should work for RU/UZ/EN regardless of UI locale.
   const language = formData.get('language') as string | null;
   if (!language || !SUPPORTED_LANGUAGES.includes(language as SupportedSttLanguage)) {
     return c.json({
@@ -60,6 +62,13 @@ voice.post('/recognize', async (c) => {
       error: `Unsupported language. Supported: ${SUPPORTED_LANGUAGES.join(', ')}`,
     }, 400);
   }
+
+  const rawLanguages = formData.get('languages') as string | null;
+  const requestedLanguages = parseLanguages(rawLanguages);
+  const languageCodes = uniqueSupportedLanguages([
+    language as SupportedSttLanguage,
+    ...requestedLanguages,
+  ]);
 
   // Extract audio file
   const audioFile = formData.get('audio') as unknown as { size: number; arrayBuffer(): Promise<ArrayBuffer> } | null;
@@ -79,7 +88,7 @@ voice.post('/recognize', async (c) => {
   // Build Google Cloud STT V2 request
   const sttRequest = {
     config: {
-      languageCodes: [language],
+      languageCodes,
       model: 'short',
       autoDecodingConfig: {},
     },
@@ -110,10 +119,14 @@ voice.post('/recognize', async (c) => {
     const text = firstResult?.transcript?.trim() ?? '';
     const confidence = firstResult?.confidence ?? 0;
 
+    const detectedLanguage = normalizeDetectedLanguage(data.results?.[0]?.languageCode);
+
     return c.json({
       ok: true,
       text,
       confidence,
+      language: detectedLanguage ?? language,
+      detectedLanguage,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -121,6 +134,30 @@ voice.post('/recognize', async (c) => {
     return c.json({ ok: false, error: 'Speech recognition unavailable' }, 502);
   }
 });
+
+function parseLanguages(rawLanguages: string | null): SupportedSttLanguage[] {
+  if (!rawLanguages) return SUPPORTED_LANGUAGES;
+
+  try {
+    const parsed = JSON.parse(rawLanguages) as unknown;
+    if (!Array.isArray(parsed)) return SUPPORTED_LANGUAGES;
+    return parsed.filter((item): item is SupportedSttLanguage =>
+      typeof item === 'string' && SUPPORTED_LANGUAGES.includes(item as SupportedSttLanguage),
+    );
+  } catch {
+    return SUPPORTED_LANGUAGES;
+  }
+}
+
+function uniqueSupportedLanguages(languages: SupportedSttLanguage[]): SupportedSttLanguage[] {
+  const unique = languages.filter((language, index) => languages.indexOf(language) === index);
+  return unique.length > 0 ? unique : SUPPORTED_LANGUAGES;
+}
+
+function normalizeDetectedLanguage(languageCode?: string): SupportedSttLanguage | undefined {
+  if (!languageCode) return undefined;
+  return SUPPORTED_LANGUAGES.find((language) => languageCode.toLowerCase().startsWith(language.toLowerCase().slice(0, 2)));
+}
 
 /**
  * Convert Uint8Array to base64 string.

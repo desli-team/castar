@@ -10,6 +10,7 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { clearTombstone, recordTombstone } from '../services/tombstones';
 import type { Env, Variables } from '../types';
 
 const recurrings = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -81,6 +82,7 @@ recurrings.post('/', async (c) => {
       data.frequency, data.next_date, now, now,
     )
     .run();
+  await clearTombstone(db, userId, 'recurrings', data.id);
 
   return c.json({ ok: true, data: { id: data.id } }, 201);
 });
@@ -156,7 +158,9 @@ recurrings.delete('/:id', async (c) => {
   const existing = await db.prepare('SELECT id FROM recurrings WHERE id = ? AND user_id = ?').bind(id, userId).first();
   if (!existing) return c.json({ ok: false, error: 'Recurring rule not found' }, 404);
 
+  const deletedAt = Date.now();
   await db.prepare('DELETE FROM recurrings WHERE id = ? AND user_id = ?').bind(id, userId).run();
+  await recordTombstone(db, userId, 'recurrings', id, deletedAt);
   return c.json({ ok: true });
 });
 

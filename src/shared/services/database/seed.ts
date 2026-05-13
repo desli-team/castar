@@ -25,7 +25,7 @@ export function seedDefaults(userId: string): void {
           name: cat.nameKey,
           icon: cat.icon,
           color: cat.color,
-          type: cat.type as 'income' | 'expense' | 'transfer',
+          type: cat.type as 'income' | 'expense',
           isDefault: true,
           sortOrder: i,
           createdAt: now,

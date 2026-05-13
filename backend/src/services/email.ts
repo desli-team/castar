@@ -48,17 +48,17 @@ export async function sendEmailCode(
     });
 
     if (!response.ok) {
-      const body = await response.text();
-      console.log(`[Email] Resend API error ${response.status}: ${body}`);
+      await response.text().catch(() => '');
+      console.log(`[Email] Resend API error ${response.status}`);
       return { ok: false, error: `Resend API error: ${response.status}` };
     }
 
     const result = await response.json() as { id?: string };
-    console.log(`[Email] Sent to ${email}, message id: ${result.id}`);
+    console.log(`[Email] Sent, message id: ${result.id ? 'present' : 'missing'}`);
     return { ok: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.log(`[Email] Failed to send to ${email}: ${message}`);
+    console.log(`[Email] Failed to send: ${message}`);
     return { ok: false, error: message };
   }
 }

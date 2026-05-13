@@ -41,8 +41,8 @@ export async function sendSmsCode(
     });
 
     if (!response.ok) {
-      const body = await response.text();
-      console.log(`[SMS] Eskiz API error ${response.status}: ${body}`);
+      await response.text().catch(() => '');
+      console.log(`[SMS] Eskiz API error ${response.status}`);
       return { ok: false, error: `Eskiz API error: ${response.status}` };
     }
 
@@ -51,11 +51,11 @@ export async function sendSmsCode(
       status?: string;
       message?: string;
     };
-    console.log(`[SMS] Sent to ${cleanPhone}, response:`, JSON.stringify(result));
+    console.log('[SMS] Sent, response:', JSON.stringify({ status: result.status, hasId: Boolean(result.id) }));
     return { ok: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.log(`[SMS] Failed to send to ${phone}: ${message}`);
+    console.log(`[SMS] Failed to send: ${message}`);
     return { ok: false, error: message };
   }
 }

@@ -261,6 +261,21 @@ export const PinLockScreen = () => {
     };
   }, [startLockoutTimer]);
 
+  // Show success state: green cells + glow, then call onDone
+  const showSuccessState = useCallback((onDone: () => void) => {
+    setSuccess(true);
+    setSuccessGlowMounted(true);
+    Animated.timing(successOpacity, {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+    }).start(() => {
+      setTimeout(() => {
+        onDone();
+      }, 600);
+    });
+  }, [successOpacity]);
+
   // ── Biometric authentication ──
   const triggerBiometric = useCallback(async () => {
     try {
@@ -354,21 +369,6 @@ export const PinLockScreen = () => {
     borderAnims.forEach((a, i) => a.setValue(i === 0 ? 1 : 0));
     deleteOpacity.setValue(0.3);
   }, [dotAnims, borderAnims, deleteOpacity]);
-
-  // Show success state: green cells + glow, then call onDone
-  const showSuccessState = useCallback((onDone: () => void) => {
-    setSuccess(true);
-    setSuccessGlowMounted(true);
-    Animated.timing(successOpacity, {
-      toValue: 1,
-      duration: 400,
-      useNativeDriver: true,
-    }).start(() => {
-      setTimeout(() => {
-        onDone();
-      }, 600);
-    });
-  }, [successOpacity]);
 
   // Handle PIN completion -- verify against stored PIN
   const handlePinComplete = useCallback(async (enteredPin: string) => {

@@ -172,7 +172,7 @@ async function upsertUser(
     // Create new user row
     await db
       .prepare(
-        'INSERT INTO users (id, telegram_id, email, phone, display_name, tier, language, primary_currency, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO users (id, telegram_id, email, phone, display_name, tier, role, premium_until, subscription_status, language, primary_currency, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .bind(
         userId,
@@ -181,6 +181,9 @@ async function upsertUser(
         fields.phone ?? null,
         fields.display_name ?? null,
         'free',
+        'user',
+        null,
+        'none',
         'en',
         'UZS',
         now,
@@ -406,14 +409,13 @@ auth.get('/telegram/callback', async (c) => {
     params[key] = value;
   });
 
-  console.log('[Telegram Callback] Params:', JSON.stringify(params));
 
   // 2. Validate HMAC-SHA256 hash + auth_date freshness
   const isValid = await validateTelegramAuth(params, c.env.TELEGRAM_BOT_TOKEN);
 
   if (!isValid) {
     const paramKeys = Object.keys(params);
-    console.log('[Telegram Callback] Validation FAILED. Keys:', paramKeys.join(','), 'Full URL:', c.req.url);
+    console.log('[Telegram Callback] Validation FAILED. Keys:', paramKeys.join(','));
     return c.html(`<!DOCTYPE html>
 <html><head><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Castar — Auth Error</title>
@@ -421,12 +423,12 @@ auth.get('/telegram/callback', async (c) => {
 </head><body><div class="container">
 <h1>Auth Failed</h1>
 <p>Telegram auth validation failed.</p>
-<pre>keys: ${paramKeys.join(', ') || '(none)'}\nhash: ${params['hash'] ? 'present' : 'missing'}\nauth_date: ${params['auth_date'] || 'missing'}\nid: ${params['id'] || 'missing'}\nfull_url: ${c.req.url}</pre>
+<pre>keys: ${paramKeys.join(', ') || '(none)'}\nhash: ${params['hash'] ? 'present' : 'missing'}\nauth_date: ${params['auth_date'] || 'missing'}\nid: ${params['id'] ? 'present' : 'missing'}</pre>
 <p><a href="${new URL(c.req.url).origin}/auth/telegram?bot=castar_bot">Try again</a></p>
 </div></body></html>`, 403);
   }
 
-  console.log('[Telegram Callback] Validation OK, user id:', params['id']);
+  console.log('[Telegram Callback] Validation OK');
 
   // 3. Build user object matching client TelegramUser shape
   const telegramUser = {
@@ -611,9 +613,6 @@ auth.post('/email/send-code', async (c) => {
   const code = generateCode();
   await upsertOtp(c.env.DB, email, 'email', code, Date.now() + OTP_EXPIRY_MS);
 
-  // Send via Resend.com + log to console as backup
-  console.log(`[Email OTP] ${email} → code: ${code}`);
-
   const emailResult = await sendEmailCode(email, code, c.env.RESEND_API_KEY);
   if (!emailResult.ok) {
     console.log(`[Email OTP] Failed to send email: ${emailResult.error}`);
@@ -658,7 +657,7 @@ auth.post('/email/verify-code', async (c) => {
 
   if (entry.code !== code) {
     const attemptsLeft = OTP_MAX_ATTEMPTS - entry.attempts - 1;
-    console.log(`[Email OTP] ${email} → wrong code (${code}), ${attemptsLeft} attempts left`);
+    console.log(`[Email OTP] Wrong code, ${attemptsLeft} attempts left`);
     return c.json({ ok: false, error: 'Invalid code', attemptsLeft }, 400);
   }
 
@@ -672,7 +671,7 @@ auth.post('/email/verify-code', async (c) => {
     console.log(`[Email OTP] upsertUser error:`, err),
   );
 
-  console.log(`[Email OTP] ${email} → verified OK, userId: ${userId}`);
+  console.log('[Email OTP] Verified OK');
 
   return c.json({ ok: true, token, email });
 });
@@ -703,9 +702,6 @@ auth.post('/phone/send-code', async (c) => {
 
   const code = generateCode();
   await upsertOtp(c.env.DB, phone, 'phone', code, Date.now() + OTP_EXPIRY_MS);
-
-  // Send via Eskiz.uz + log to console as backup
-  console.log(`[Phone OTP] ${phone} → code: ${code}`);
 
   const smsResult = await sendSmsCode(phone, code, c.env.ESKIZ_TOKEN);
   if (!smsResult.ok) {
@@ -751,7 +747,7 @@ auth.post('/phone/verify-code', async (c) => {
 
   if (entry.code !== code) {
     const attemptsLeft = OTP_MAX_ATTEMPTS - entry.attempts - 1;
-    console.log(`[Phone OTP] ${phone} → wrong code (${code}), ${attemptsLeft} attempts left`);
+    console.log(`[Phone OTP] Wrong code, ${attemptsLeft} attempts left`);
     return c.json({ ok: false, error: 'Invalid code', attemptsLeft }, 400);
   }
 
@@ -765,7 +761,7 @@ auth.post('/phone/verify-code', async (c) => {
     console.log(`[Phone OTP] upsertUser error:`, err),
   );
 
-  console.log(`[Phone OTP] ${phone} → verified OK, userId: ${userId}`);
+  console.log('[Phone OTP] Verified OK');
 
   return c.json({ ok: true, token, phone });
 });

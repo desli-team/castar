@@ -90,7 +90,7 @@
   "tabs": {
     "home": "Startseite",
     "monitoring": "Monitoring",
-    "tasks": "Aufgaben",
+    "tasks": "Inbox",
     "profile": "Profil"
   },
   "home": {
@@ -103,7 +103,7 @@
     "streak": "Tage in Folge",
     "tasksThisMonth": "Aufgaben diesen Monat",
     "streakLabel": "Streak",
-    "tasksLabel": "Aufgaben",
+    "tasksLabel": "INBOX",
     "done": "Erledigt",
     "archive": "Archiv",
     "inProgress": "In Bearbeitung",

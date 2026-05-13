@@ -6,7 +6,7 @@
  * POST /sync/full  — push + pull in one request
  */
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../apiClient';
 import { queryKeys } from '../queryClient';
 import type {
@@ -16,9 +16,31 @@ import type {
   SyncPushResult,
   SyncPullResult,
   SyncFullResult,
+  SyncDevicesResult,
+  RegisterSyncDeviceRequest,
 } from '../types';
 
+// ── Queries ──
+
+/** List registered sync devices for the current user. */
+export function useSyncDevices() {
+  return useQuery({
+    queryKey: [...queryKeys.settings.all, 'syncDevices'],
+    queryFn: () => apiClient.get<SyncDevicesResult>('/sync/devices'),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 // ── Mutations ──
+
+/** Register or refresh this app install as a sync device. */
+export function useRegisterSyncDevice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: RegisterSyncDeviceRequest) => apiClient.post<{ id: string }>('/sync/devices', data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...queryKeys.settings.all, 'syncDevices'] }),
+  });
+}
 
 /** Push local sync queue to server */
 export function useSyncPush() {

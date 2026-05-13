@@ -90,7 +90,7 @@
   "tabs": {
     "home": "Ana səhifə",
     "monitoring": "Monitorinq",
-    "tasks": "Tapşırıqlar",
+    "tasks": "Inbox",
     "profile": "Profil"
   },
   "home": {
@@ -103,7 +103,7 @@
     "streak": "gün ardıcıl",
     "tasksThisMonth": "bu ay tapşırıqlar",
     "streakLabel": "Strik",
-    "tasksLabel": "Tapşırıqlar",
+    "tasksLabel": "INBOX",
     "done": "Hazır",
     "archive": "Arxiv",
     "inProgress": "Davam edir",

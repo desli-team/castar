@@ -88,7 +88,7 @@
   "tabs": {
     "home": "G\u0142\u00f3wna",
     "monitoring": "Monitoring",
-    "tasks": "Zadania",
+    "tasks": "Inbox",
     "profile": "Profil"
   },
   "home": {
@@ -101,7 +101,7 @@
     "streak": "dni z rzędu",
     "tasksThisMonth": "zadań w tym miesiącu",
     "streakLabel": "Seria",
-    "tasksLabel": "Zadania",
+    "tasksLabel": "INBOX",
     "done": "Gotowe",
     "archive": "Archiwum",
     "inProgress": "W trakcie",

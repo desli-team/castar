@@ -4,7 +4,7 @@ export const createTransactionSchema = z.object({
   accountId: z.string().min(1, 'Account is required'),
   categoryId: z.string().min(1, 'Category is required'),
   familyGroupId: z.string().optional(),
-  type: z.enum(['income', 'expense', 'transfer']),
+  type: z.enum(['income', 'expense']),
   amount: z.number().positive('Amount must be greater than 0'),
   currency: z.string().min(1),
   description: z.string().max(500).optional(),
@@ -20,7 +20,7 @@ export const createBudgetSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
   amount: z.number().positive('Amount must be greater than 0'),
   currency: z.string().min(1),
-  period: z.enum(['daily', 'weekly', 'monthly', 'yearly']),
+  period: z.enum(['daily', 'weekly', 'fourteen_days', 'monthly', 'yearly']),
   startDate: z.number().positive(),
   endDate: z.number().optional(),
 });
@@ -31,7 +31,7 @@ export const createCategorySchema = z.object({
   name: z.string().min(1, 'Name is required').max(50),
   icon: z.string().min(1),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid color'),
-  type: z.enum(['income', 'expense', 'transfer']),
+  type: z.enum(['income', 'expense']),
   parentId: z.string().optional(),
 });
 
@@ -49,7 +49,7 @@ export const createAccountSchema = z.object({
 export const createRecurringSchema = z.object({
   accountId: z.string().min(1),
   categoryId: z.string().min(1),
-  type: z.enum(['income', 'expense', 'transfer']),
+  type: z.enum(['income', 'expense']),
   amount: z.number().positive(),
   currency: z.string().min(1),
   description: z.string().max(500).optional(),

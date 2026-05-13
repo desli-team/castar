@@ -11,10 +11,13 @@ import { Audio } from 'expo-av';
 
 export type SupportedSttLanguage = 'uz-UZ' | 'ru-RU' | 'en-US';
 
+export const SUPPORTED_STT_LANGUAGES: SupportedSttLanguage[] = ['uz-UZ', 'ru-RU', 'en-US'];
+
 interface CloudRecognitionResult {
   text: string;
   confidence: number;
   language: SupportedSttLanguage;
+  detectedLanguage?: SupportedSttLanguage;
 }
 
 interface RecordingState {
@@ -106,6 +109,7 @@ export async function recognizeAudio(
   audioUri: string,
   language: SupportedSttLanguage,
   backendUrl: string,
+  languages: SupportedSttLanguage[] = SUPPORTED_STT_LANGUAGES,
 ): Promise<CloudRecognitionResult> {
   const formData = new FormData();
 
@@ -116,6 +120,7 @@ export async function recognizeAudio(
   } as unknown as Blob);
 
   formData.append('language', language);
+  formData.append('languages', JSON.stringify(languages));
 
   const response = await fetch(`${backendUrl}/api/voice/recognize`, {
     method: 'POST',
@@ -129,12 +134,13 @@ export async function recognizeAudio(
     throw new Error(`Cloud STT failed: ${response.status} ${response.statusText}`);
   }
 
-  const data = await response.json() as { text: string; confidence: number };
+  const data = await response.json() as { text: string; confidence: number; language?: SupportedSttLanguage; detectedLanguage?: SupportedSttLanguage };
 
   return {
     text: data.text,
     confidence: data.confidence,
-    language,
+    language: data.language ?? language,
+    detectedLanguage: data.detectedLanguage,
   };
 }
 

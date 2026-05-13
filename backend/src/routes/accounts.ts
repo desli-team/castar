@@ -9,6 +9,7 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { clearTombstone, recordTombstone } from '../services/tombstones';
 import type { Env, Variables } from '../types';
 
 const accounts = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -73,6 +74,7 @@ accounts.post('/', async (c) => {
     )
     .bind(data.id, userId, data.name, data.type, data.currency, data.balance, data.icon ?? null, data.color ?? null, now, now)
     .run();
+  await clearTombstone(db, userId, 'accounts', data.id);
 
   return c.json({ ok: true, data: { id: data.id } }, 201);
 });
@@ -138,10 +140,12 @@ accounts.delete('/:id', async (c) => {
 
   if (!existing) return c.json({ ok: false, error: 'Account not found' }, 404);
 
+  const deletedAt = Date.now();
   await db
     .prepare('UPDATE accounts SET is_archived = 1, updated_at = ? WHERE id = ? AND user_id = ?')
-    .bind(Date.now(), id, userId)
+    .bind(deletedAt, id, userId)
     .run();
+  await recordTombstone(db, userId, 'accounts', id, deletedAt);
 
   return c.json({ ok: true });
 });

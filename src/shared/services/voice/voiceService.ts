@@ -12,7 +12,7 @@
  */
 
 import NetInfo from '@react-native-community/netinfo';
-import type { SupportedSttLanguage } from './cloudRecognition';
+import { SUPPORTED_STT_LANGUAGES, type SupportedSttLanguage } from './cloudRecognition';
 import type { VoiceParseResult } from '../../types';
 import { parseVoiceInput } from './voiceParser';
 
@@ -20,6 +20,7 @@ export type VoiceMode = 'cloud' | 'offline' | 'auto';
 
 export interface VoiceRecognitionOptions {
   language: SupportedSttLanguage;
+  languages?: SupportedSttLanguage[];
   mode?: VoiceMode;
   backendUrl?: string;
   maxDurationMs?: number;
@@ -29,6 +30,7 @@ export interface VoiceRecognitionResult {
   text: string;
   confidence: number;
   language: SupportedSttLanguage;
+  detectedLanguage?: SupportedSttLanguage;
   mode: 'cloud' | 'offline';
   parsed: VoiceParseResult;
 }
@@ -98,7 +100,8 @@ async function resolveMode(mode: VoiceMode): Promise<'cloud' | 'offline'> {
 }
 
 /**
- * Map app language codes to STT language codes.
+ * Map app language codes to a preferred STT language code.
+ * Voice recognition itself is multilingual and must not be limited by UI language.
  */
 export function appLanguageToStt(lang: string): SupportedSttLanguage {
   switch (lang) {
@@ -113,6 +116,10 @@ export function appLanguageToStt(lang: string): SupportedSttLanguage {
   }
 }
 
+export function getMultilingualSttLanguages(preferred: SupportedSttLanguage): SupportedSttLanguage[] {
+  return [preferred, ...SUPPORTED_STT_LANGUAGES.filter((language) => language !== preferred)];
+}
+
 /**
  * Start voice recognition with automatic mode selection.
  *
@@ -124,6 +131,7 @@ export async function recognize(
 ): Promise<VoiceRecognitionResult | null> {
   const {
     language,
+    languages = getMultilingualSttLanguages(language),
     mode: requestedMode = 'auto',
     backendUrl = DEFAULT_BACKEND_URL,
     maxDurationMs = DEFAULT_MAX_DURATION_MS,
@@ -136,7 +144,7 @@ export async function recognize(
 
   try {
     if (resolvedMode === 'cloud') {
-      return await recognizeCloud(language, backendUrl, maxDurationMs);
+      return await recognizeCloud(language, backendUrl, maxDurationMs, languages);
     } else {
       return await recognizeOffline(language, maxDurationMs);
     }
@@ -167,6 +175,7 @@ async function recognizeCloud(
   language: SupportedSttLanguage,
   backendUrl: string,
   maxDurationMs: number,
+  languages: SupportedSttLanguage[],
 ): Promise<VoiceRecognitionResult | null> {
   const cloud = await import('./cloudRecognition');
 
@@ -190,7 +199,7 @@ async function recognizeCloud(
   }
 
   updateState({ isProcessing: true });
-  const result = await cloud.recognizeAudio(uri, language, backendUrl);
+  const result = await cloud.recognizeAudio(uri, language, backendUrl, languages);
   updateState({ isProcessing: false });
 
   if (!result.text) return null;
@@ -199,6 +208,7 @@ async function recognizeCloud(
     text: result.text,
     confidence: result.confidence,
     language: result.language,
+    detectedLanguage: result.detectedLanguage,
     mode: 'cloud',
     parsed: parseVoiceInput(result.text),
   };

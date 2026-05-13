@@ -90,7 +90,7 @@
   "tabs": {
     "home": "Басты бет",
     "monitoring": "Мониторинг",
-    "tasks": "Тапсырмалар",
+    "tasks": "Inbox",
     "profile": "Профиль"
   },
   "home": {
@@ -103,7 +103,7 @@
     "streak": "күн қатарынан",
     "tasksThisMonth": "ай тапсырмалары",
     "streakLabel": "Стрик",
-    "tasksLabel": "Тапсырмалар",
+    "tasksLabel": "INBOX",
     "done": "Дайын",
     "archive": "Мұрағат",
     "inProgress": "Орындалуда",

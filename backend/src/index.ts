@@ -13,9 +13,11 @@ import { categories } from './routes/categories';
 import { accounts } from './routes/accounts';
 import { budgets } from './routes/budgets';
 import { recurrings } from './routes/recurrings';
+import { debts } from './routes/debts';
 import { settings } from './routes/settings';
 import { sync } from './routes/sync';
 import { voice } from './routes/voice';
+import { intent } from './routes/intent';
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -57,6 +59,8 @@ app.route('/auth', auth);
 // Root + sub-paths both need middleware in Hono
 app.use('/api/voice', authMiddleware);
 app.use('/api/voice/*', authMiddleware);
+app.use('/intent', authMiddleware);
+app.use('/intent/*', authMiddleware);
 app.use('/transactions', authMiddleware);
 app.use('/transactions/*', authMiddleware);
 app.use('/categories', authMiddleware);
@@ -67,17 +71,21 @@ app.use('/budgets', authMiddleware);
 app.use('/budgets/*', authMiddleware);
 app.use('/recurrings', authMiddleware);
 app.use('/recurrings/*', authMiddleware);
+app.use('/debts', authMiddleware);
+app.use('/debts/*', authMiddleware);
 app.use('/settings', authMiddleware);
 app.use('/settings/*', authMiddleware);
 app.use('/sync', authMiddleware);
 app.use('/sync/*', authMiddleware);
 
 app.route('/api/voice', voice);
+app.route('/intent', intent);
 app.route('/transactions', transactions);
 app.route('/categories', categories);
 app.route('/accounts', accounts);
 app.route('/budgets', budgets);
 app.route('/recurrings', recurrings);
+app.route('/debts', debts);
 app.route('/settings', settings);
 app.route('/sync', sync);
 

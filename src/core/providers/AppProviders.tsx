@@ -3,19 +3,27 @@ import { NavigationContainer } from '@react-navigation/native';
 import type { NavigationState } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
+import NetInfo from '@react-native-community/netinfo';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { PostHogProvider } from 'posthog-react-native';
 import { colors } from '../../shared/constants';
 import { useAuthStore } from '../../features/auth/store/authStore';
 import { useProfileStore } from '../../features/profile/store/profileStore';
 import { useBudgetStore } from '../../features/budget/store/budgetStore';
 import { useTransactionStore } from '../../features/transactions/store/transactionStore';
 import { useCategoryStore } from '../../features/categories/store/categoryStore';
+import { useRecurringStore } from '../../features/recurring/store/recurringStore';
 import { queryClient } from '../../shared/services/api/queryClient';
 import { initEncryptedDb } from '../../shared/services/database/connection';
 import { runMigrations } from '../../shared/services/database/migrations';
 import * as budgetQueries from '../../shared/services/database/budgetQueries';
 import * as transactionQueries from '../../shared/services/database/transactionQueries';
 import * as categoryQueries from '../../shared/services/database/categoryQueries';
+import * as recurringQueries from '../../shared/services/database/recurringQueries';
+import { POSTHOG_API_KEY, POSTHOG_HOST } from '../../shared/services/analytics/posthog';
+import { runRecurringCatchUp } from '../../shared/services/recurring/recurringGenerator';
+import { evaluateBudgetAlerts } from '../../features/budget/services/budgetAlertService';
+import { syncService } from '../../shared/services/sync/syncService';
 
 // Initialize i18n
 import '../../shared/i18n';
@@ -74,8 +82,13 @@ export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
         if (userId) {
           try {
             useBudgetStore.getState().setBudgets(budgetQueries.findByUser(userId));
-            useTransactionStore.getState().setTransactions(transactionQueries.findByUser(userId));
+            useTransactionStore.getState().setTransactions(transactionQueries.findByUser(userId, 10000));
             useCategoryStore.getState().setCategories(categoryQueries.findByUser(userId));
+            useRecurringStore.getState().setRecurrings(recurringQueries.findAll().filter((item) => item.userId === userId));
+            evaluateBudgetAlerts(userId, budgetQueries.findByUser(userId), transactionQueries.findByUser(userId, 1000));
+            runRecurringCatchUp(userId)
+              .then(() => syncService.syncNow())
+              .catch(() => {});
           } catch {
             // DB read failed — stores stay empty, user can still create new data
           }
@@ -88,6 +101,15 @@ export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
     };
     init();
   }, [initializeAuth, initializeSettings]);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      const online = Boolean(state.isConnected && state.isInternetReachable !== false);
+      syncService.setOnlineStatus(online);
+    });
+
+    return unsubscribe;
+  }, []);
 
   // Persist navigation state (debounced — avoids writing on every tab switch)
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -106,14 +128,23 @@ export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <NavigationContainer
-        theme={navigationTheme}
-        initialState={initialState}
-        onStateChange={onStateChange}
+      <PostHogProvider
+        apiKey={POSTHOG_API_KEY}
+        options={{
+          host: POSTHOG_HOST,
+          captureAppLifecycleEvents: false,
+        }}
+        autocapture={false}
       >
-        <StatusBar style="light" translucent backgroundColor="transparent" />
-        {children}
-      </NavigationContainer>
+        <NavigationContainer
+          theme={navigationTheme}
+          initialState={initialState}
+          onStateChange={onStateChange}
+        >
+          <StatusBar style="light" translucent backgroundColor="transparent" />
+          {children}
+        </NavigationContainer>
+      </PostHogProvider>
     </QueryClientProvider>
   );
 };

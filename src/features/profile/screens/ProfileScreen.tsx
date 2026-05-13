@@ -68,6 +68,7 @@ import { sendPhoneVerificationCode, verifyPhoneCode } from '../../auth/services/
 import { useAuthStore } from '../../auth/store/authStore';
 import { useProfileStore } from '../store/profileStore';
 import { getRatesFromUSD } from '../../../shared/services/currency/currencyService';
+import { useSettings } from '../../../shared/services/api/hooks/useSettings';
 import { useTabBarVisibility } from '../../../core/navigation/tabBarVisibility';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -611,6 +612,7 @@ export const ProfileScreen = () => {
   const biometricLock = useProfileStore((s) => s.settings.biometricLock);
   const setBiometricLock = useProfileStore((s) => s.setBiometricLock);
   const setTabBarHidden = useTabBarVisibility((s) => s.setHidden);
+  const { data: settings } = useSettings();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showLogoutPopup, setShowLogoutPopup] = useState(false);
   const logoutPopupOpacity = useRef(new Animated.Value(0)).current;
@@ -785,6 +787,9 @@ export const ProfileScreen = () => {
   const authMethod = telegramUser?.username
     ? `@${telegramUser.username}`
     : userId || '';
+
+  const isPremium = settings?.tier === 'premium';
+  const planLabel = isPremium ? 'Premium' : 'Free';
 
   // Current language
   const currentLang = i18n.language;
@@ -1065,17 +1070,14 @@ export const ProfileScreen = () => {
   }, [deletePopupOpacity, deletePopupScale, setTabBarHidden]);
 
   const confirmDeleteAccount = useCallback(async () => {
-    setIsDeleting(true);
-    try {
-      // TODO: call backend delete endpoint
-      setTabBarHidden(false);
-      await logout();
-    } catch {
-      setIsDeleting(false);
-      setShowDeletePopup(false);
-      setTabBarHidden(false);
-    }
-  }, [logout, setTabBarHidden]);
+    setIsDeleting(false);
+    setShowDeletePopup(false);
+    setTabBarHidden(false);
+    Alert.alert(
+      'Account deletion is not available yet',
+      'We will enable this only after the backend can delete or export user data safely. Use Log out if you only want to leave this device.',
+    );
+  }, [setTabBarHidden]);
 
   // Settings field editing mode (animations handled by reanimated entering/exiting)
   const startEditing = useCallback((field: 'name' | 'telegram' | 'phone' | 'email') => {
@@ -1119,15 +1121,17 @@ export const ProfileScreen = () => {
       return;
     }
     Keyboard.dismiss();
-    // Update local state
-    const setterMap = { name: setSettingsName, telegram: setSettingsTelegram, phone: setSettingsPhone, email: setSettingsEmail };
-    setterMap[editingField](trimmed);
-    // Persist to store
+    if (editingField !== 'name') {
+      Alert.alert('Contact editing is not available yet', 'Phone, email, and Telegram changes will be enabled after backend verification/persistence is ready.');
+      cancelEditing();
+      return;
+    }
+
+    setSettingsName(trimmed);
     try {
-      if (editingField === 'name' && trimmed && trimmed !== displayName) {
+      if (trimmed && trimmed !== displayName) {
         await setDisplayNameAndContinue(trimmed);
       }
-      // TODO: persist telegram, phone, email to backend when ready
     } catch {
       // ignore
     }
@@ -1340,6 +1344,16 @@ export const ProfileScreen = () => {
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* ── Plan tier chip ── */}
+          <TouchableOpacity
+            style={[styles.planChip, isPremium && styles.planChipPremium]}
+            activeOpacity={0.78}
+            onPress={() => navigation.navigate('SubscriptionManagement')}
+          >
+            <View style={[styles.planChipDot, isPremium && styles.planChipDotPremium]} />
+            <Text style={styles.planChipText}>{planLabel}</Text>
+          </TouchableOpacity>
 
           {/* ── Section 2: Currency + Language (32px gap from above) ── */}
           <View style={styles.selectorRow}>
@@ -2259,7 +2273,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 32,
+    marginBottom: 14,
   },
   userDataLeft: {
     flex: 1,
@@ -2300,6 +2314,40 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+
+  // === Plan tier chip ===
+  planChip: {
+    alignSelf: 'flex-start',
+    minHeight: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 11,
+    gap: 7,
+    marginBottom: 24,
+  },
+  planChipPremium: {
+    backgroundColor: 'rgba(98, 214, 147, 0.1)',
+    borderColor: 'rgba(98, 214, 147, 0.28)',
+  },
+  planChipDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: colors.white[40],
+  },
+  planChipDotPremium: {
+    backgroundColor: colors.success[500],
+  },
+  planChipText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.white[100],
   },
 
   // === Currency + Language row ===
