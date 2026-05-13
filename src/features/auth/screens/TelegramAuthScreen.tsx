@@ -5,14 +5,15 @@
  * Uses the same background glow as OnboardingScreen for visual consistency.
  *
  * Flow:
- *   1. Screen mounts → opens Worker /auth/telegram in EXTERNAL browser
+ *   1. Screen mounts → opens Worker /auth/telegram in an in-app WebView
  *   2. Browser shows Telegram Login Widget → user taps → Telegram OAuth
  *   3. User confirms → Telegram redirects to Worker callback with auth params
  *   4. Worker validates HMAC, creates JWT, redirects to castar://auth/callback?...
  *   5. OS catches castar:// deep link → opens app
  *   6. Linking event fires → we parse token + user → loginWithTelegram() → SetName
  *
- * No WebView needed — the entire OAuth flow happens in the external browser.
+ * WebView is required for Expo Go/device QA because Expo Go cannot own the
+ * production castar:// scheme. We intercept the callback page link instead.
  */
 
 import React, { useCallback, useRef, useState, useEffect } from 'react';
@@ -39,6 +40,7 @@ import Animated, {
   Easing,
   FadeIn,
 } from 'react-native-reanimated';
+import { WebView } from 'react-native-webview';
 
 import { colors, fontFamily, grid } from '../../../shared/constants';
 import { scale, GLOW_RENDER_SIZE, GLOW2_RENDER_SIZE } from '../../../shared/constants/scaling';
@@ -83,6 +85,7 @@ export const TelegramAuthScreen = () => {
 
   const [error, setError] = useState<string | null>(null);
   const [browserOpened, setBrowserOpened] = useState(false);
+  const [showTelegramWebView, setShowTelegramWebView] = useState(false);
   const handledCallback = useRef(false);
 
   // Pulsing dots animation — opacity oscillates 0.3 → 1 → 0.3
@@ -126,24 +129,37 @@ export const TelegramAuthScreen = () => {
   );
 
   /**
-   * Open the Telegram auth page in the external browser.
+   * Open Telegram auth in an in-app WebView. This works in Expo Go because we
+   * capture the generated castar:// callback URL before the OS has to resolve it.
    */
   const openBrowserAuth = useCallback(() => {
     setError(null);
     handledCallback.current = false;
+    setShowTelegramWebView(true);
+    setBrowserOpened(true);
+  }, []);
 
-    const url = getTelegramAuthUrl(i18n.language);
-    Linking.openURL(url)
-      .then(() => {
-        setBrowserOpened(true);
-      })
-      .catch(() => {
-        setError(
-          t('auth.telegramAuthError') ||
-            'Failed to open browser. Please try again.',
-        );
-      });
-  }, [t, i18n.language]);
+  const handleCallbackUrl = useCallback(
+    (url: string) => {
+      if (!isAuthCallback(url)) return false;
+      const result = parseAuthCallback(url);
+      if (result) {
+        setShowTelegramWebView(false);
+        handleAuthResult(result.token, result.user);
+      } else {
+        setError(t('auth.telegramAuthError') || 'Authentication failed. Please try again.');
+      }
+      return true;
+    },
+    [handleAuthResult, t],
+  );
+
+  const handleWebViewMessage = useCallback(
+    (event: { nativeEvent: { data: string } }) => {
+      handleCallbackUrl(event.nativeEvent.data);
+    },
+    [handleCallbackUrl],
+  );
 
   /**
    * Open browser on mount.
@@ -301,6 +317,56 @@ export const TelegramAuthScreen = () => {
           </View>
         )}
       </View>
+
+      {showTelegramWebView && (
+        <View style={styles.telegramWebViewOverlay}>
+          <View style={styles.telegramWebViewHeader}>
+            <TouchableOpacity
+              onPress={() => setShowTelegramWebView(false)}
+              style={styles.telegramWebViewClose}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.telegramWebViewCloseText}>✕</Text>
+            </TouchableOpacity>
+            <Text style={styles.telegramWebViewTitle}>Telegram</Text>
+            <View style={{ width: 44 }} />
+          </View>
+          <WebView
+            source={{ uri: getTelegramAuthUrl(i18n.language) }}
+            incognito={true}
+            style={styles.telegramWebView}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            sharedCookiesEnabled={false}
+            setSupportMultipleWindows={false}
+            javaScriptCanOpenWindowsAutomatically={true}
+            onMessage={handleWebViewMessage}
+            onShouldStartLoadWithRequest={(request) => !handleCallbackUrl(request.url)}
+            injectedJavaScript={`
+              document.addEventListener('click', function(e) {
+                var el = e.target;
+                while (el && el.tagName !== 'A') el = el.parentElement;
+                if (el && el.href && el.href.startsWith('castar://')) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  window.ReactNativeWebView.postMessage(el.href);
+                }
+              }, true);
+              (function() {
+                var checkInterval = setInterval(function() {
+                  var links = document.querySelectorAll('a[href^="castar://"]');
+                  if (links.length > 0) {
+                    clearInterval(checkInterval);
+                    window.ReactNativeWebView.postMessage(links[0].href);
+                  }
+                }, 300);
+                setTimeout(function() { clearInterval(checkInterval); }, 30000);
+              })();
+              true;
+            `}
+          />
+        </View>
+      )}
     </View>
   );
 };
@@ -431,5 +497,41 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: colors.white[50],
+  },
+
+  telegramWebViewOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.background,
+    zIndex: 100,
+  },
+  telegramWebViewHeader: {
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    backgroundColor: colors.background,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
+  },
+  telegramWebViewClose: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  telegramWebViewCloseText: {
+    color: colors.white[100],
+    fontSize: 22,
+    fontFamily: fontFamily.medium,
+  },
+  telegramWebViewTitle: {
+    color: colors.white[100],
+    fontSize: 17,
+    fontFamily: fontFamily.medium,
+  },
+  telegramWebView: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
 });
