@@ -15,7 +15,6 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { format } from 'date-fns';
-import { usePostHog } from 'posthog-react-native';
 
 import { Button } from '../../../shared/components';
 import { BackButton } from '../../../shared/components/BackButton';
@@ -28,7 +27,7 @@ import * as transactionQueries from '../../../shared/services/database/transacti
 import * as accountQueries from '../../../shared/services/database/accountQueries';
 import * as auditLogQueries from '../../../shared/services/database/auditLogQueries';
 import { syncService } from '../../../shared/services/sync/syncService';
-import { captureSafeEvent } from '../../../shared/services/analytics/posthog';
+import { captureSafeEvent, useSafePostHog } from '../../../shared/services/analytics/posthog';
 
 type RouteProps = NativeStackScreenProps<HomeStackParamList, 'TransactionDetail'>['route'];
 type EditableType = Extract<TransactionType, 'income' | 'expense'>;
@@ -45,7 +44,7 @@ const signedAmount = (type: TransactionType, amount: number): number => (
 
 export const TransactionDetailScreen = () => {
   const { t } = useTranslation();
-  const posthog = usePostHog();
+  const posthog = useSafePostHog();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const route = useRoute<RouteProps>();
   const insets = useSafeAreaInsets();

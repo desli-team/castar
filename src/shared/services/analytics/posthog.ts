@@ -6,7 +6,7 @@
  * never send raw descriptions, names, audio, or exact amounts.
  */
 
-import type { PostHog } from 'posthog-react-native';
+import { usePostHog, type PostHog } from 'posthog-react-native';
 
 export const POSTHOG_API_KEY = 'phc_JY…mT7A';
 export const POSTHOG_HOST = 'https://eu.i.posthog.com';
@@ -52,4 +52,9 @@ export function captureSafeEvent(
     ...sanitizeProperties(properties),
     privacy: 'financial_payload_masked',
   });
+}
+
+export function useSafePostHog(): PostHog | null {
+  if (!isPostHogConfigured()) return null;
+  return usePostHog();
 }

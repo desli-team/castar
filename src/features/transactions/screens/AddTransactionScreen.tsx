@@ -13,7 +13,6 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import { usePostHog } from 'posthog-react-native';
 
 import { Button, Card, Input } from '../../../shared/components';
 import { colors, spacing, typography, borderRadius } from '../../../shared/constants';
@@ -32,7 +31,7 @@ import { syncService } from '../../../shared/services/sync/syncService';
 import { seedDefaults } from '../../../shared/services/database/seed';
 import { parseVoiceInputs } from '../../../shared/services/voice/voiceParser';
 import { appLanguageToStt, recognize, onStateChange, type VoiceServiceState } from '../../../shared/services/voice/voiceService';
-import { captureSafeEvent } from '../../../shared/services/analytics/posthog';
+import { captureSafeEvent, useSafePostHog } from '../../../shared/services/analytics/posthog';
 import { resolveIntent } from '../../../shared/services/intent/intentResolver';
 import {
   candidateFromIntentDraft,
@@ -50,7 +49,7 @@ import {
 export const AddTransactionScreen = () => {
   const { t } = useTranslation();
   const route = useRoute<RouteProp<HomeStackParamList, 'AddTransaction'>>();
-  const posthog = usePostHog();
+  const posthog = useSafePostHog();
   const userId = useAuthStore((s) => s.userId);
   const appCurrency = useProfileStore((s) => s.currency) as Currency;
   const language = useProfileStore((s) => s.language);
