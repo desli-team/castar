@@ -1,5 +1,5 @@
 import { and, eq, lt, gte, count as drizzleCount, asc, desc } from 'drizzle-orm';
-import { v4 as uuid } from 'uuid';
+import { generateUUID } from '../../utils/uuid';
 import { db } from './connection';
 import { syncQueue } from './schema';
 import type { SyncAction, SyncQueueItem } from '../../types';
@@ -103,7 +103,7 @@ export function enqueue(tableName: string, recordId: string, action: SyncAction,
 
   db.insert(syncQueue)
     .values({
-      id: uuid(),
+      id: generateUUID(),
       tableName,
       recordId,
       action: compacted.action,

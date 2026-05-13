@@ -20,7 +20,7 @@ import * as budgetQueries from '../../shared/services/database/budgetQueries';
 import * as transactionQueries from '../../shared/services/database/transactionQueries';
 import * as categoryQueries from '../../shared/services/database/categoryQueries';
 import * as recurringQueries from '../../shared/services/database/recurringQueries';
-import { POSTHOG_API_KEY, POSTHOG_HOST } from '../../shared/services/analytics/posthog';
+import { POSTHOG_API_KEY, POSTHOG_HOST, isPostHogConfigured } from '../../shared/services/analytics/posthog';
 import { runRecurringCatchUp } from '../../shared/services/recurring/recurringGenerator';
 import { evaluateBudgetAlerts } from '../../features/budget/services/budgetAlertService';
 import { syncService } from '../../shared/services/sync/syncService';
@@ -126,25 +126,33 @@ export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
     return null;
   }
 
+  const navigation = (
+    <NavigationContainer
+      theme={navigationTheme}
+      initialState={initialState}
+      onStateChange={onStateChange}
+    >
+      <StatusBar style="light" translucent backgroundColor="transparent" />
+      {children}
+    </NavigationContainer>
+  );
+
   return (
     <QueryClientProvider client={queryClient}>
-      <PostHogProvider
-        apiKey={POSTHOG_API_KEY}
-        options={{
-          host: POSTHOG_HOST,
-          captureAppLifecycleEvents: false,
-        }}
-        autocapture={false}
-      >
-        <NavigationContainer
-          theme={navigationTheme}
-          initialState={initialState}
-          onStateChange={onStateChange}
+      {isPostHogConfigured() ? (
+        <PostHogProvider
+          apiKey={POSTHOG_API_KEY}
+          options={{
+            host: POSTHOG_HOST,
+            captureAppLifecycleEvents: false,
+          }}
+          autocapture={false}
         >
-          <StatusBar style="light" translucent backgroundColor="transparent" />
-          {children}
-        </NavigationContainer>
-      </PostHogProvider>
+          {navigation}
+        </PostHogProvider>
+      ) : (
+        navigation
+      )}
     </QueryClientProvider>
   );
 };

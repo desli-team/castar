@@ -11,6 +11,10 @@ import type { PostHog } from 'posthog-react-native';
 export const POSTHOG_API_KEY = 'phc_JY…mT7A';
 export const POSTHOG_HOST = 'https://eu.i.posthog.com';
 
+export function isPostHogConfigured(): boolean {
+  return /^phc_[A-Za-z0-9_/-]{20,}$/.test(POSTHOG_API_KEY);
+}
+
 export type SafeAnalyticsProperties = Record<string, string | number | boolean | null | undefined>;
 
 const SENSITIVE_PROPERTY_KEYS = [

@@ -1,4 +1,4 @@
-import { v4 as uuid } from 'uuid';
+import { generateUUID } from '../../utils/uuid';
 import { eq, count } from 'drizzle-orm';
 import { db } from './connection';
 import { categories, accounts } from './schema';
@@ -20,7 +20,7 @@ export function seedDefaults(userId: string): void {
     tx.insert(categories)
       .values(
         defaultCategories.map((cat, i) => ({
-          id: uuid(),
+          id: generateUUID(),
           userId,
           name: cat.nameKey,
           icon: cat.icon,
@@ -37,7 +37,7 @@ export function seedDefaults(userId: string): void {
     // Seed default Cash account
     tx.insert(accounts)
       .values({
-        id: uuid(),
+        id: generateUUID(),
         userId,
         name: 'Cash',
         type: 'cash',

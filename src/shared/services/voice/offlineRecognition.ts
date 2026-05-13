@@ -12,8 +12,28 @@
  * Models are ~50MB each and loaded on first use per language.
  */
 
-import * as Vosk from 'react-native-vosk';
 import type { SupportedSttLanguage } from './cloudRecognition';
+
+type VoskModule = {
+  loadModel: (modelUrl: string) => Promise<void>;
+  onResult: (callback: (res: string) => void) => import('react-native').EventSubscription;
+  onFinalResult: (callback: (res: string) => void) => import('react-native').EventSubscription;
+  onError: (callback: (error: unknown) => void) => import('react-native').EventSubscription;
+  start: () => Promise<void>;
+  stop: () => void;
+  unload: () => void;
+};
+
+function getVosk(): VoskModule | null {
+  try {
+    // Expo Go does not include this native module. Requiring lazily prevents
+    // TurboModuleRegistry from crashing the whole app on startup.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require('react-native-vosk') as VoskModule;
+  } catch {
+    return null;
+  }
+}
 
 interface OfflineRecognitionResult {
   text: string;
@@ -51,6 +71,9 @@ export async function loadModel(language: SupportedSttLanguage): Promise<boolean
   if (!modelUrl) return false;
 
   try {
+    const Vosk = getVosk();
+    if (!Vosk) return false;
+
     await Vosk.loadModel(modelUrl);
     currentModelLanguage = language;
     isModelLoaded = true;
@@ -83,6 +106,12 @@ export async function startRecognition(
   }
 
   try {
+    const Vosk = getVosk();
+    if (!Vosk) {
+      onError?.(new Error('Offline voice recognition is unavailable in this build'));
+      return;
+    }
+
     // Clean up previous subscriptions
     removeSubscriptions();
 
@@ -147,7 +176,7 @@ function removeSubscriptions(): void {
  */
 export function stopRecognition(): void {
   try {
-    Vosk.stop();
+    getVosk()?.stop();
   } catch {
     // Already stopped or not started
   }
@@ -160,7 +189,7 @@ export function stopRecognition(): void {
 export function cleanup(): void {
   stopRecognition();
   try {
-    Vosk.unload();
+    getVosk()?.unload();
   } catch {
     // ignore
   }
