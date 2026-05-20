@@ -26,8 +26,8 @@ export type SupportedCurrency = (typeof APP_CONFIG.supportedCurrencies)[number];
  * 4. Update botUsername with your bot's username
  */
 export const TELEGRAM_CONFIG = {
-  /** Cloudflare Worker URL (no trailing slash) */
-  workerUrl: 'https://castar-auth.ivcswebofficial.workers.dev',
+  /** Backend API URL (no trailing slash). */
+  workerUrl: 'https://apicastar.desli.uz',
   /** Telegram bot username (without @) */
   botUsername: 'castar_bot',
   /** Deep link scheme */
