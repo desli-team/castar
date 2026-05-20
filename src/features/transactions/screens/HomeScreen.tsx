@@ -1588,7 +1588,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(98, 214, 147, 0.33)',
     boxShadow: '0 0 25px 0 rgba(10, 203, 91, 0.5)',
     overflow: 'hidden',
-  },  voiceNoise: {
+  },
+  voiceNoise: {
     ...StyleSheet.absoluteFillObject,
     width: 60,
     height: 60,
