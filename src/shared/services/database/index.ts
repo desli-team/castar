@@ -26,9 +26,9 @@ export const auditLogRepository = auditLogQueries;
 export const syncQueueRepository = syncQueueQueries;
 
 /** Initialize database: run migrations and seed defaults. */
-export function initDatabase(userId: string): void {
+export async function initDatabase(userId: string): Promise<void> {
   const { runMigrations: run } = require('./migrations');
   const { seedDefaults: seed } = require('./seed');
-  run();
+  await run();
   seed(userId);
 }

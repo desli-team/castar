@@ -3,5 +3,5 @@
   "compilerOptions": {
     "strict": true
   },
-  "exclude": ["backend"]
+  "exclude": ["backend", "src/**/*.test.ts"]
 }

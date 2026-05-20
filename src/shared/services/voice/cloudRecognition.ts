@@ -8,6 +8,8 @@
  */
 
 import { Audio } from 'expo-av';
+import { useAuthStore } from '../../../features/auth/store/authStore';
+import { buildVoiceRecognitionHeaders } from './voiceAuthHeaders';
 
 export type SupportedSttLanguage = 'uz-UZ' | 'ru-RU' | 'en-US';
 
@@ -121,13 +123,12 @@ export async function recognizeAudio(
 
   formData.append('language', language);
   formData.append('languages', JSON.stringify(languages));
+  const token = useAuthStore.getState().token;
 
   const response = await fetch(`${backendUrl}/api/voice/recognize`, {
     method: 'POST',
     body: formData,
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
+    headers: buildVoiceRecognitionHeaders(token),
   });
 
   if (!response.ok) {

@@ -22,6 +22,10 @@ export async function sendEmailCode(
   code: string,
   apiKey: string,
 ): Promise<SendEmailResult> {
+  if (!apiKey) {
+    return { ok: false, error: 'Missing RESEND_API_KEY' };
+  }
+
   try {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',

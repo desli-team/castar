@@ -16,6 +16,7 @@ import { useRecurringStore } from '../../features/recurring/store/recurringStore
 import { queryClient } from '../../shared/services/api/queryClient';
 import { initEncryptedDb } from '../../shared/services/database/connection';
 import { runMigrations } from '../../shared/services/database/migrations';
+import { migrateLocalUserIds } from '../../shared/services/database/userIdMigration';
 import * as budgetQueries from '../../shared/services/database/budgetQueries';
 import * as transactionQueries from '../../shared/services/database/transactionQueries';
 import * as categoryQueries from '../../shared/services/database/categoryQueries';
@@ -24,6 +25,7 @@ import { POSTHOG_API_KEY, POSTHOG_HOST, isPostHogConfigured } from '../../shared
 import { runRecurringCatchUp } from '../../shared/services/recurring/recurringGenerator';
 import { evaluateBudgetAlerts } from '../../features/budget/services/budgetAlertService';
 import { syncService } from '../../shared/services/sync/syncService';
+import { getLegacyAuthUserIds } from '../../features/auth/services/authIdentity';
 
 // Initialize i18n
 import '../../shared/i18n';
@@ -66,7 +68,7 @@ export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
         await initEncryptedDb();
 
         // Create tables if they don't exist yet
-        runMigrations();
+        await runMigrations();
 
         const [, , savedNav] = await Promise.all([
           initializeAuth(),
@@ -78,9 +80,12 @@ export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
         }
 
         // Load persisted data from SQLite into Zustand stores
-        const userId = useAuthStore.getState().userId;
+        const { userId, telegramUser } = useAuthStore.getState();
         if (userId) {
           try {
+            if (telegramUser) {
+              migrateLocalUserIds(getLegacyAuthUserIds(telegramUser, userId), userId);
+            }
             useBudgetStore.getState().setBudgets(budgetQueries.findByUser(userId));
             useTransactionStore.getState().setTransactions(transactionQueries.findByUser(userId, 10000));
             useCategoryStore.getState().setCategories(categoryQueries.findByUser(userId));

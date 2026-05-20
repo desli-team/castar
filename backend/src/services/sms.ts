@@ -23,6 +23,10 @@ export async function sendSmsCode(
   code: string,
   token: string,
 ): Promise<SendSmsResult> {
+  if (!token) {
+    return { ok: false, error: 'Missing ESKIZ_TOKEN' };
+  }
+
   try {
     // Eskiz expects phone WITHOUT leading "+" (e.g. 998901234567)
     const cleanPhone = phone.replace(/^\+/, '');
