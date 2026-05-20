@@ -1,5 +1,5 @@
 /**
- * CaStar Backend — Type definitions
+ * Castar Backend — Type definitions
  */
 
 /** Cloudflare Worker environment bindings */

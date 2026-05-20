@@ -17,6 +17,16 @@ import { getTelegramWidgetHtml, validateTelegramAuth } from '../services/telegra
 import { signJwt, verifyJwt } from '../services/jwt';
 import { sendEmailCode } from '../services/email';
 import { sendSmsCode } from '../services/sms';
+import {
+  getEmailUserId,
+  getPhoneUserId,
+  getTelegramUserId,
+  isValidEmail,
+  isValidPhone,
+  normalizeEmail,
+  normalizePhone,
+} from '../services/authIdentity';
+import { generateOtpCode } from '../services/otp';
 
 const auth = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -86,11 +96,6 @@ async function checkIpRateLimit(
   return { allowed: true };
 }
 
-/** Generate a random 4-digit code */
-function generateCode(): string {
-  return String(Math.floor(1000 + Math.random() * 9000));
-}
-
 /** Row shape returned from D1 otp_codes table */
 interface OtpRow {
   id: string;
@@ -138,6 +143,11 @@ async function incrementAttempts(db: D1Database, id: string): Promise<void> {
 /** Delete OTP entry */
 async function deleteOtp(db: D1Database, id: string): Promise<void> {
   await db.prepare('DELETE FROM otp_codes WHERE id = ?').bind(id).run();
+}
+
+/** Delete OTP entry by identifier + type */
+async function deleteOtpByIdentifier(db: D1Database, identifier: string, type: string): Promise<void> {
+  await db.prepare('DELETE FROM otp_codes WHERE identifier = ? AND type = ?').bind(identifier, type).run();
 }
 
 /** Clean up expired OTPs (housekeeping, fire-and-forget) */
@@ -439,8 +449,8 @@ auth.get('/telegram/callback', async (c) => {
     photo_url: params['photo_url'] || '',
   };
 
-  // 4. Use Telegram user ID as the userId for JWT
-  const userId = `tg_${telegramUser.id}`;
+  // 4. Use canonical Telegram user ID as the userId for JWT
+  const userId = getTelegramUserId(telegramUser.id);
 
   // 5. Sign JWT (30 days expiry)
   const token = await signJwt(userId, c.env.JWT_SECRET);
@@ -596,10 +606,10 @@ auth.post('/email/send-code', async (c) => {
   }
 
   const body = await c.req.json<{ email?: string }>();
-  const email = body.email?.trim().toLowerCase();
+  const email = normalizeEmail(body.email ?? '');
 
-  if (!email) {
-    return c.json({ ok: false, error: 'Email is required' }, 400);
+  if (!isValidEmail(email)) {
+    return c.json({ ok: false, error: 'Valid email is required' }, 400);
   }
 
   const existing = await getOtp(c.env.DB, email, 'email');
@@ -610,13 +620,14 @@ auth.post('/email/send-code', async (c) => {
     return c.json({ ok: false, error: 'Too many requests', retryAfter }, 429);
   }
 
-  const code = generateCode();
+  const code = generateOtpCode();
   await upsertOtp(c.env.DB, email, 'email', code, Date.now() + OTP_EXPIRY_MS);
 
   const emailResult = await sendEmailCode(email, code, c.env.RESEND_API_KEY);
   if (!emailResult.ok) {
     console.log(`[Email OTP] Failed to send email: ${emailResult.error}`);
-    // Don't fail — code is in D1, visible in wrangler tail
+    await deleteOtpByIdentifier(c.env.DB, email, 'email').catch(() => {});
+    return c.json({ ok: false, error: 'Email delivery failed' }, 502);
   }
 
   // Housekeeping: clean up expired OTPs (fire and forget)
@@ -628,11 +639,11 @@ auth.post('/email/send-code', async (c) => {
 // POST /auth/email/verify-code
 auth.post('/email/verify-code', async (c) => {
   const body = await c.req.json<{ email?: string; code?: string }>();
-  const email = body.email?.trim().toLowerCase();
+  const email = normalizeEmail(body.email ?? '');
   const code = body.code?.trim();
 
-  if (!email || !code) {
-    return c.json({ ok: false, error: 'Email and code are required' }, 400);
+  if (!isValidEmail(email) || !code || !/^\d{4}$/.test(code)) {
+    return c.json({ ok: false, error: 'Valid email and 4-digit code are required' }, 400);
   }
 
   const entry = await getOtp(c.env.DB, email, 'email');
@@ -663,7 +674,7 @@ auth.post('/email/verify-code', async (c) => {
 
   // Success — delete OTP, sign JWT, upsert user
   await deleteOtp(c.env.DB, entry.id);
-  const userId = `email_${email.replace(/[^a-z0-9]/g, '_')}`;
+  const userId = getEmailUserId(email);
   const token = await signJwt(userId, c.env.JWT_SECRET);
 
   // Upsert user row in D1
@@ -686,10 +697,10 @@ auth.post('/phone/send-code', async (c) => {
   }
 
   const body = await c.req.json<{ phone?: string }>();
-  const phone = body.phone?.trim();
+  const phone = normalizePhone(body.phone ?? '');
 
-  if (!phone) {
-    return c.json({ ok: false, error: 'Phone number is required' }, 400);
+  if (!isValidPhone(phone)) {
+    return c.json({ ok: false, error: 'Valid phone number is required' }, 400);
   }
 
   const existing = await getOtp(c.env.DB, phone, 'phone');
@@ -700,13 +711,14 @@ auth.post('/phone/send-code', async (c) => {
     return c.json({ ok: false, error: 'Too many requests', retryAfter }, 429);
   }
 
-  const code = generateCode();
+  const code = generateOtpCode();
   await upsertOtp(c.env.DB, phone, 'phone', code, Date.now() + OTP_EXPIRY_MS);
 
   const smsResult = await sendSmsCode(phone, code, c.env.ESKIZ_TOKEN);
   if (!smsResult.ok) {
     console.log(`[Phone OTP] Failed to send SMS: ${smsResult.error}`);
-    // Don't fail — code is in D1, visible in wrangler tail
+    await deleteOtpByIdentifier(c.env.DB, phone, 'phone').catch(() => {});
+    return c.json({ ok: false, error: 'SMS delivery failed' }, 502);
   }
 
   // Housekeeping: clean up expired OTPs (fire and forget)
@@ -718,11 +730,11 @@ auth.post('/phone/send-code', async (c) => {
 // POST /auth/phone/verify-code
 auth.post('/phone/verify-code', async (c) => {
   const body = await c.req.json<{ phone?: string; code?: string }>();
-  const phone = body.phone?.trim();
+  const phone = normalizePhone(body.phone ?? '');
   const code = body.code?.trim();
 
-  if (!phone || !code) {
-    return c.json({ ok: false, error: 'Phone and code are required' }, 400);
+  if (!isValidPhone(phone) || !code || !/^\d{4}$/.test(code)) {
+    return c.json({ ok: false, error: 'Valid phone and 4-digit code are required' }, 400);
   }
 
   const entry = await getOtp(c.env.DB, phone, 'phone');
@@ -753,7 +765,7 @@ auth.post('/phone/verify-code', async (c) => {
 
   // Success — delete OTP, sign JWT, upsert user
   await deleteOtp(c.env.DB, entry.id);
-  const userId = `phone_${phone.replace(/\D/g, '')}`;
+  const userId = getPhoneUserId(phone);
   const token = await signJwt(userId, c.env.JWT_SECRET);
 
   // Upsert user row in D1

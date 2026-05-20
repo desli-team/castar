@@ -9,6 +9,7 @@
 
 import * as SecureStore from 'expo-secure-store';
 import { TELEGRAM_CONFIG } from '../../../shared/constants/config';
+import { getEmailAuthUserId, getPhoneAuthUserId } from './authIdentity';
 
 // ===================== Types =====================
 
@@ -441,7 +442,7 @@ export async function persistEmailAuth(
   email: string,
 ): Promise<void> {
   const syntheticUser: TelegramUser = {
-    id: email,
+    id: getEmailAuthUserId(email),
     first_name: '',
     last_name: '',
     username: '',
@@ -460,7 +461,7 @@ export async function persistPhoneAuth(
   phone: string,
 ): Promise<void> {
   const syntheticUser: TelegramUser = {
-    id: phone,
+    id: getPhoneAuthUserId(phone),
     first_name: '',
     last_name: '',
     username: '',

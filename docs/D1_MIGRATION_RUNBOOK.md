@@ -9,12 +9,12 @@ Production/remote migrations require explicit approval.
 - Run staging/non-prod first.
 - After migration, smoke test auth, sync push/pull, deletes/tombstones, audit logs, and income analytics.
 
-## Current pending scale-safety migrations
+## Current pending production migrations
 
 Apply in order after approval:
 
-1. `backend/migrations/0010_sync_tombstones_tables.sql`
-2. `backend/migrations/0011_scale_indexes.sql`
+1. `backend/migrations/0012_transaction_review.sql`
+2. `backend/migrations/0013_user_roles_entitlements.sql`
 
 Convenience command after approval:
 
@@ -36,7 +36,7 @@ cd backend
 npm run db:migrate:local:fresh
 ```
 
-For the latest local scale-safety migrations only:
+For an older local database that already has migrations through `0011`:
 
 ```bash
 cd backend
