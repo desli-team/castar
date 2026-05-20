@@ -18,6 +18,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.nilats.castar",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSMicrophoneUsageDescription": "Castar uses the microphone to turn voice input into transactions.",
         "NSSpeechRecognitionUsageDescription": "Castar uses speech recognition to convert voice input into transaction text."
       }
