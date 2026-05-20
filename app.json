@@ -1,12 +1,13 @@
 {
   "expo": {
-    "name": "castar",
-    "slug": "castar",
+    "name": "Castar",
+    "slug": "castar-app",
     "scheme": "castar",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "description": "Personal and family finance tracking for iOS and Android.",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -14,7 +15,12 @@
       "backgroundColor": "#101010"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nilats.castar",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Castar uses the microphone to turn voice input into transactions.",
+        "NSSpeechRecognitionUsageDescription": "Castar uses speech recognition to convert voice input into transaction text."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -23,7 +29,12 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.castar"
+      "permissions": [
+        "RECORD_AUDIO",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ],
+      "package": "com.nilats.castar"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -40,10 +51,10 @@
         }
       ]
     ],
-    "owner": "nilats",
+    "owner": "vladlen",
     "extra": {
       "eas": {
-        "projectId": "47f56049-f9b3-45cb-a0f8-195c8277f795"
+        "projectId": "cab94422-ac9e-4e13-a97b-61aeeb769833"
       }
     }
   }

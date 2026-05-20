@@ -1,0 +1,36 @@
+# dependencies
+node_modules/
+
+# Expo / build output
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# generated native folders
+/ios
+/android
+
+# local Cloudflare/Wrangler state
+.wrangler/
+backend/.wrangler/
+
+# local env and credentials
+.env*.local
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+
+# local IDE / agent context
+.agents/
+.idea/
+AGENTS.md
+
+# misc local files
+.DS_Store
+*.tsbuildinfo
+*.orig.*
+nul

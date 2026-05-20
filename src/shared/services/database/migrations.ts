@@ -197,7 +197,7 @@ function runSafeSchemaPatches(): void {
   `);
 }
 
-export function runMigrations(): void {
+export async function runMigrations(): Promise<void> {
   // Check if legacy migration system exists
   const hasLegacyTable = rawDb.getFirstSync<{ name: string }>(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
@@ -206,6 +206,6 @@ export function runMigrations(): void {
     bridgeFromLegacy();
   }
 
-  migrate(db, migrations);
+  await migrate(db, migrations);
   runSafeSchemaPatches();
 }

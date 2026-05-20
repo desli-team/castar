@@ -1,5 +1,5 @@
 /**
- * CaStar — JWT Auth Middleware
+ * Castar — JWT Auth Middleware
  * Verifies Bearer token and sets userId in context.
  */
 

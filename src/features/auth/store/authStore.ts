@@ -13,6 +13,12 @@ import {
   hasPersistedPin,
   verifyPersistedPin,
 } from '../services/telegramAuth';
+import {
+  getCanonicalAuthUserId,
+  getEmailAuthUserId,
+  getPhoneAuthUserId,
+  getTelegramAuthUserId,
+} from '../services/authIdentity';
 
 interface AuthStore {
   isAuthenticated: boolean;
@@ -84,11 +90,12 @@ export const useAuthStore = create<AuthStore>((set) => ({
       if (persisted) {
         // Only mark as onboarded if user has completed both SetName AND SetPin
         const hasCompletedSetup = !!displayName && pinExists;
+        const userId = getCanonicalAuthUserId(persisted.user);
         set({
           isAuthenticated: true,
           isOnboarded: hasCompletedSetup,
           token: persisted.token,
-          userId: persisted.user.id,
+          userId,
           telegramUser: persisted.user,
           displayName,
           hasPin: pinExists,
@@ -104,6 +111,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   loginWithTelegram: async (token, user) => {
     await persistAuth(token, user);
+    const userId = getTelegramAuthUserId(user.id);
 
     // Check if this is a returning user (has saved display name AND PIN)
     const [savedName, pinExists] = await Promise.all([
@@ -117,7 +125,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
         isAuthenticated: true,
         isOnboarded: true,
         token,
-        userId: user.id,
+        userId,
         telegramUser: user,
         displayName: savedName,
         hasPin: true,
@@ -128,7 +136,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
         isAuthenticated: true,
         // Don't set isOnboarded yet — user goes through setup screens first
         token,
-        userId: user.id,
+        userId,
         telegramUser: user,
         displayName: savedName,
         hasPin: pinExists,
@@ -138,6 +146,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   loginWithEmail: async (token, email) => {
     await persistEmailAuth(token, email);
+    const userId = getEmailAuthUserId(email);
 
     // Check if this is a returning user (has saved display name AND PIN)
     const [savedName, pinExists] = await Promise.all([
@@ -151,7 +160,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
         isAuthenticated: true,
         isOnboarded: true,
         token,
-        userId: email,
+        userId,
         displayName: savedName,
         hasPin: true,
       });
@@ -160,7 +169,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
       set({
         isAuthenticated: true,
         token,
-        userId: email,
+        userId,
         displayName: savedName,
         hasPin: pinExists,
       });
@@ -169,6 +178,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   loginWithPhone: async (token, phone) => {
     await persistPhoneAuth(token, phone);
+    const userId = getPhoneAuthUserId(phone);
 
     // Check if this is a returning user (has saved display name AND PIN)
     const [savedName, pinExists] = await Promise.all([
@@ -182,7 +192,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
         isAuthenticated: true,
         isOnboarded: true,
         token,
-        userId: phone,
+        userId,
         displayName: savedName,
         hasPin: true,
       });
@@ -191,7 +201,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
       set({
         isAuthenticated: true,
         token,
-        userId: phone,
+        userId,
         displayName: savedName,
         hasPin: pinExists,
       });

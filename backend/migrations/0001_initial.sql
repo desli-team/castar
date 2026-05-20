@@ -1,4 +1,4 @@
--- CaStar D1 Schema v1
+-- Castar D1 Schema v1
 -- Run: wrangler d1 execute castar-db --file=migrations/0001_initial.sql
 
 -- Users (created on first auth)
@@ -9,9 +9,6 @@ CREATE TABLE IF NOT EXISTS users (
   phone TEXT UNIQUE,
   display_name TEXT,
   tier TEXT NOT NULL DEFAULT 'free',
-  role TEXT NOT NULL DEFAULT 'user',
-  premium_until INTEGER,
-  subscription_status TEXT NOT NULL DEFAULT 'none',
   language TEXT NOT NULL DEFAULT 'uz',
   primary_currency TEXT NOT NULL DEFAULT 'UZS',
   created_at INTEGER NOT NULL,
@@ -72,7 +69,6 @@ CREATE TABLE IF NOT EXISTS transactions (
   is_recurring INTEGER NOT NULL DEFAULT 0,
   recurring_id TEXT,
   voice_input INTEGER NOT NULL DEFAULT 0,
-  reviewed INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -109,31 +105,6 @@ CREATE TABLE IF NOT EXISTS recurrings (
   updated_at INTEGER NOT NULL
 );
 
--- Subscription records
-CREATE TABLE IF NOT EXISTS subscriptions (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  provider TEXT NOT NULL,
-  provider_customer_id TEXT,
-  provider_subscription_id TEXT,
-  plan TEXT NOT NULL DEFAULT 'premium',
-  status TEXT NOT NULL DEFAULT 'none',
-  current_period_end INTEGER,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
-);
-
--- Sync devices for multi-device entitlement tracking
-CREATE TABLE IF NOT EXISTS sync_devices (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  name TEXT,
-  platform TEXT,
-  first_seen_at INTEGER NOT NULL,
-  last_seen_at INTEGER NOT NULL,
-  is_active INTEGER NOT NULL DEFAULT 1
-);
-
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_users_telegram ON users(telegram_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -150,6 +121,3 @@ CREATE INDEX IF NOT EXISTS idx_budgets_user_active ON budgets(user_id, is_active
 CREATE INDEX IF NOT EXISTS idx_budgets_user_category ON budgets(user_id, category_id);
 CREATE INDEX IF NOT EXISTS idx_recurrings_user ON recurrings(user_id);
 CREATE INDEX IF NOT EXISTS idx_recurrings_next ON recurrings(next_date, is_active);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_user ON subscriptions(user_id, updated_at);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_provider_id ON subscriptions(provider, provider_subscription_id);
-CREATE INDEX IF NOT EXISTS idx_sync_devices_user_active ON sync_devices(user_id, is_active, last_seen_at);

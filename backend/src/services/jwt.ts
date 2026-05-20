@@ -1,5 +1,5 @@
 /**
- * CaStar — JWT Service
+ * Castar — JWT Service
  * Signs and verifies JWT tokens using jose library.
  */
 

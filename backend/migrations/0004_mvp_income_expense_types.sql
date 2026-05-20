@@ -1,3 +1,5 @@
 -- Migration slot intentionally retained.
 -- Transfer transaction/category/recurring type was removed from the MVP product model.
 -- Fresh schema and runtime validation now support only income/expense financial types.
+
+SELECT 1;
