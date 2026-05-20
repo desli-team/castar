@@ -12,6 +12,7 @@
  */
 
 import NetInfo from '@react-native-community/netinfo';
+import { TELEGRAM_CONFIG } from '../../constants/config';
 import { SUPPORTED_STT_LANGUAGES, type SupportedSttLanguage } from './cloudRecognition';
 import type { VoiceParseResult } from '../../types';
 import { parseVoiceInput } from './voiceParser';
@@ -44,7 +45,7 @@ export interface VoiceServiceState {
   error: string | null;
 }
 
-const DEFAULT_BACKEND_URL = 'https://castar-auth.ivcswebofficial.workers.dev';
+const DEFAULT_BACKEND_URL = TELEGRAM_CONFIG.workerUrl;
 const DEFAULT_MAX_DURATION_MS = 7000;
 
 let stateCallback: VoiceStateCallback | null = null;

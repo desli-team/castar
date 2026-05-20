@@ -12,7 +12,7 @@ import { useAuthStore } from '../../../features/auth/store/authStore';
 
 // ── Base URL ──
 
-const BASE_URL = TELEGRAM_CONFIG.workerUrl; // https://castar-auth.ivcswebofficial.workers.dev
+const BASE_URL = TELEGRAM_CONFIG.workerUrl;
 
 // ── snake_case ↔ camelCase converters ──
 
